@@ -1,0 +1,20 @@
+{"branch": [
+   {"id":   "nom-1", "seq":  "ATGCATGCATGC"},
+   {"id":   "nom-2",
+    "seq":  ["ATTAATTAATTA",
+             {"branch": ["GTCTCGTA", "CGTTAGCNNN"]}]},
+   {"id":   "nom-3",
+    "seq":  [{"dist": {"A": 0.50, "T": 0.50}}, "ATGGCAGTCGACT*"]}
+]}
+
+equivalent:
+
+"ATGCATGC"
+{"seq": "ATGCATGC"}
+["ATGC","ATGC"]
+{"seq": ["ATGC","ATGC"]
+
+note that alignments are local by default; for a global alignment:
+
+"*ATGCATGC*"
+

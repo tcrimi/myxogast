@@ -1,0 +1,7 @@
+[package]
+name = "myxogast"
+version = "0.1.0"
+authors = ["kieran hervold <hervold@gmail.com>"]
+
+[dependencies]
+rustc-serialize = "*"
