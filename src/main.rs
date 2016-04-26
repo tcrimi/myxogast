@@ -1,8 +1,9 @@
+#![feature(zero_one)]
+
 extern crate rustc_serialize;
 use rustc_serialize::json;
 use std::ops::{Index,IndexMut};
-use std::clone::Clone;
-//use core::cmp::Eq;
+use std::num::Zero;
 
 const MMERS : usize = 4;
 
@@ -33,14 +34,14 @@ impl Sequence {
 
 
 #[derive(Debug,RustcDecodable,RustcEncodable)]
-pub struct Matrix<T:Clone> {
+pub struct Matrix<T: Zero> {
     width:   usize,
     height:  usize,
     data :   Vec<T>
 }
 
-impl<T:Clone> Matrix<T> {
-    pub fn new( init: T, w: usize, h: usize ) -> Matrix<T> {
+impl<T: Zero> Matrix<T> {
+    pub fn new( w: usize, h: usize ) -> Matrix<T> {
         Matrix {
             width:  w,
             height: h,
@@ -48,7 +49,7 @@ impl<T:Clone> Matrix<T> {
                 // FIXME: why doesn't the vec! macro work here?  this seems inefficient
                 let mut v : Vec<T> = Vec::new();
                 for _ in 0..(w * h) {
-                    v.push(init.clone());
+                    v.push(T::zero());
                 }
                 v
             }
@@ -56,7 +57,7 @@ impl<T:Clone> Matrix<T> {
     }
 }
 
-impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
+impl<T:Zero> Index<(i32, i32)> for Matrix<T> {
     type Output = T;
     fn index<'a>(&'a self, _index: (i32, i32)) -> &'a T {
         let (a, b) = _index;
@@ -66,7 +67,7 @@ impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
     }
 }
 
-impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
+impl<T:Zero> IndexMut<(i32, i32)> for Matrix<T> {
     fn index_mut<'a>(&'a mut self, _index: (i32, i32)) -> &'a mut T {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
@@ -159,13 +160,13 @@ pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
 }
 
 pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<()> {
-    let mut m = Matrix::<i32>::new( 0, reference.len() + 1, query.len() + 1 );
+    let mut m = Matrix::<i32>::new( reference.len() + 1, query.len() + 1 );
     
     None
 }
 
 pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
-    let mut m = Matrix::<f32>::new( 0., reference.width + 1, query.len() + 1 );
+    let mut m = Matrix::<f32>::new( reference.width + 1, query.len() + 1 );
     None
 }
 
@@ -174,7 +175,7 @@ fn main() {
     let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
     println!("Hello World: {:?}", x );
     println!("{:?}", json::encode(&x));
-    let mut y = Matrix::<u32>::new(0, 10, 10);
+    let mut y = Matrix::<u32>::new(10, 10);
     y[(1,0)] = 5u32;
     println!("5 == {}?", y[(1,0)]);
 
