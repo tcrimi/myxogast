@@ -2,6 +2,7 @@ extern crate rustc_serialize;
 use rustc_serialize::json;
 use std::ops::{Index,IndexMut};
 use std::clone::Clone;
+//use core::cmp::Eq;
 
 const MMERS : usize = 4;
 
@@ -27,10 +28,11 @@ impl Sequence {
             Err(msg) => Err(msg)
         }
     }
+    fn len(&self) -> usize { self.0.len() }
 }
 
 
-
+#[derive(Debug,RustcDecodable,RustcEncodable)]
 pub struct Matrix<T:Clone> {
     width:   usize,
     height:  usize,
@@ -74,22 +76,98 @@ impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
 }
 
 
-
-pub enum Reference {
-    ProbMatr( Matrix<f32> ),  // used to store HMMer-style probabilities
-    Simple( Sequence )        // simple reference sequence
-}
+// used to store HMMer-style probabilities; dimensions: BASE-COUNT x REF-LENGTH
+pub type ProbMatr = Matrix<f32>;
 
 
 #[derive(Debug,RustcDecodable,RustcEncodable)]
 enum SeqNode {
     Frag { id: u32, val: Sequence },
     Splat,
-    Dist { id: u32, scores: [f32; MMERS] },
+    Dist { id: u32, scores: ProbMatr },
     List { id: u32, members: Vec<SeqNode> },
     Branch { id: u32, members: Vec<SeqNode> }
 }
 
+
+pub struct AlnParams {
+    llocal:     bool,           // global or local on the left?
+    rlocal:     bool,           // global or local on the right?
+    max_indel:  Option<u8>,  // maximum number of indels before short-circuiting
+    gap_open:   i16,          // penalty for opening a gap
+    gap_ext:    i16,          // gap extention penalty
+}
+
+impl AlnParams {
+    pub fn new(  _llocal: Option<bool>, _rlocal: Option<bool>, _max_indel: Option<u8>,
+                 _gap_open: Option<i16>, _gap_ext: Option<i16> ) -> AlnParams {
+        AlnParams {
+            llocal:     match _llocal { Some(b) => b, None => true },
+            rlocal:     match _rlocal { Some(b) => b, None => true },
+            max_indel:  _max_indel,
+            gap_open:   match _gap_open { Some(g) => g, None => -1 },
+            gap_ext:    match _gap_ext { Some(g) => g, None => -1 },
+
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AlnState {
+    Match,
+    Mismatch,
+    Ins,
+    Del
+}
+
+// NOTE: I'm a little shocked I can't just #derive this...
+impl PartialEq for AlnState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (&AlnState::Match, &AlnState::Match) => true,
+            (&AlnState::Mismatch, &AlnState::Mismatch) => true,
+            (&AlnState::Ins, &AlnState::Ins) => true,
+            (&AlnState::Del, &AlnState::Del) => true,
+            _ => false }
+    }
+}
+impl Eq for AlnState {} 
+
+// bit-packing operations
+// FIXME: i16 might not be enough, so I should investigate a different division, eg
+//        4 bits for AlnState and 28 bits get munged into an i32
+pub fn pack_cell( state : AlnState, score : i16 ) -> i32 {
+    let _state : i32 = match state {
+        AlnState::Match => (0 << 16) | 0xffff,
+        AlnState::Mismatch => (1 << 16) | 0xffff,
+        AlnState::Ins => (2 << 16) | 0xffff,
+        AlnState::Del => (3 << 16) | 0xffff };
+    println!("_state: {:b}, ", _state);
+    ((score as i32) & _state)
+}
+
+pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
+    let state = try!(
+        match packed >> 16 {
+            0 => Ok(AlnState::Match),
+            1 => Ok(AlnState::Mismatch),
+            2 => Ok(AlnState::Ins),
+            3 => Ok(AlnState::Del),
+            _ => Err(()) }
+    );
+    Ok( (state, packed as i16) )
+}
+
+pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<()> {
+    let mut m = Matrix::<i32>::new( 0, reference.len() + 1, query.len() + 1 );
+    
+    None
+}
+
+pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
+    let mut m = Matrix::<f32>::new( 0., reference.width + 1, query.len() + 1 );
+    None
+}
 
 
 fn main() {
@@ -104,4 +182,11 @@ fn main() {
     println!("{:?}", q);
     let r = Sequence::from_str("atgcn");
     println!("{:?}", r);
+
+    let _ = pack_cell( AlnState::Match, -1 );
+    let _ = pack_cell( AlnState::Mismatch, -1 );
+    let _ = pack_cell( AlnState::Del, -1 );
+    assert_eq!( unpack_cell( pack_cell( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
+    assert_eq!( unpack_cell( pack_cell( AlnState::Ins, 222 ) ).unwrap(), (AlnState::Ins, 222) );
+
 }
