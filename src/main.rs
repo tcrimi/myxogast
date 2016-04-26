@@ -142,8 +142,8 @@ pub fn pack_cell( state : AlnState, score : i16 ) -> i32 {
         AlnState::Mismatch => (1 << 16) | 0xffff,
         AlnState::Ins => (2 << 16) | 0xffff,
         AlnState::Del => (3 << 16) | 0xffff };
-    println!("_state: {:b}, ", _state);
-    ((score as i32) & _state)
+    let _score : i32 = (score as i32) | 0xffff0000;
+    (_score & _state)
 }
 
 pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
@@ -187,6 +187,6 @@ fn main() {
     let _ = pack_cell( AlnState::Mismatch, -1 );
     let _ = pack_cell( AlnState::Del, -1 );
     assert_eq!( unpack_cell( pack_cell( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
-    assert_eq!( unpack_cell( pack_cell( AlnState::Ins, 222 ) ).unwrap(), (AlnState::Ins, 222) );
+    assert_eq!( unpack_cell( pack_cell( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
 
 }
