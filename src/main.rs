@@ -29,6 +29,14 @@ impl Sequence {
     fn len(&self) -> usize { self.0.len() }
 }
 
+impl Index<i32> for Sequence {
+    type Output = Mmer;
+    fn index<'a>(&'a self, _index: i32) -> &'a Mmer {
+        let a : usize = if _index < 0 {self.0.len() - (_index.abs() as usize)} else {_index as usize};
+        return &self.0[ a ];
+    }
+}
+
 
 #[derive(Debug,RustcDecodable,RustcEncodable)]
 pub struct Matrix<T:Clone> {
@@ -95,11 +103,12 @@ pub struct AlnParams {
     gap_open:   i16,         // penalty for opening a gap
     gap_ext:    i16,         // gap extention penalty
     mismatch:   i16,         // mismatch penalty
+    equal:      i16,         // match score, but "match" is a keyword
 }
 
 impl AlnParams {
     pub fn new(  _llocal: Option<bool>, _rlocal: Option<bool>, _max_indel: Option<u8>,
-                 _gap_open: Option<i16>, _gap_ext: Option<i16>, _mismatch: i16 ) -> AlnParams {
+                 _gap_open: Option<i16>, _gap_ext: Option<i16>, _mismatch: i16, _equal: Option<i16> ) -> AlnParams {
         AlnParams {
             llocal:     match _llocal { Some(b) => b, None => true },
             rlocal:     match _rlocal { Some(b) => b, None => true },
@@ -107,6 +116,7 @@ impl AlnParams {
             gap_open:   match _gap_open { Some(g) => g, None => -1 },
             gap_ext:    match _gap_ext { Some(g) => g, None => -1 },
             mismatch:   _mismatch,
+            equal:      match _equal { Some(g) => g, None => 1 }, // "match" is a keyword
         }
     }
 }
@@ -161,6 +171,10 @@ pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
     Ok( (state, packed as i16) )
 }
 
+/// Dynamic-programming alignment
+/// params can specify a max_indel, in which case this can return None if a
+///   solution can't be found with fewer indels
+///
 pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<Matrix<i32>> {
     let mut m = Matrix::<i32>::new( 0, reference.len() + 1, query.len() + 1 );
     let ref_len : i32 = reference.len() as i32;
@@ -173,11 +187,29 @@ pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Optio
                 (_, AlnState::Del) => params.gap_ext,
                 _ => params.gap_open
             };
-            
-            
+
+            let (istate, ins) = unpack_cell( m[ (i, j+1) ] ).unwrap();
+            let ins_score = ins + match (params.llocal && j == query_len, istate) {
+                (true, _) => 0,
+                (_, AlnState::Ins) => params.gap_ext,
+                _ => params.gap_open
+            };
+
+            let (_, diag) = unpack_cell( m[ (i+1, j+1) ] ).unwrap();
+            let diag_score = diag + (if (reference[i] == query[j]) {params.equal} else {params.mismatch});
+
+            let (a,b) = {
+                if (diag_score >= del_score && diag_score >= ins_score) {
+                    (if (reference[i] == query[j]) {AlnState::Match} else {AlnState::Mismatch}, diag_score)
+                } else if (del_score > diag_score && del_score >= ins_score) {
+                    (AlnState::Del, del_score)
+                } else {
+                    (AlnState::Ins, ins_score)
+                }};
+            m[ (i, j) ] = pack_cell( a, b );
         }
-    }
-    None
+    };
+    Some(m)
 }
 
 pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
@@ -204,4 +236,16 @@ fn main() {
     let _ = pack_cell( AlnState::Del, -1 );
     assert_eq!( unpack_cell( pack_cell( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
     assert_eq!( unpack_cell( pack_cell( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
+
+    let params = AlnParams {
+        llocal:    true,
+        rlocal:    true,
+        max_indel: None,
+        gap_open:  -1,
+        gap_ext:   -1,
+        mismatch:  -1,
+        equal:     1 };
+    let x = align( Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap(), Sequence::from_str("TGCTCG").unwrap(), params );
+    println!("{:?}", x);
+
 }
