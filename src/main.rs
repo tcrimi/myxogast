@@ -1,10 +1,8 @@
 extern crate rustc_serialize;
+
 use rustc_serialize::json;
 use std::ops::{Index,IndexMut};
 use std::clone::Clone;
-//use core::cmp::Eq;
-
-const MMERS : usize = 4;
 
 pub type Mmer = u8;
 
@@ -36,7 +34,7 @@ impl Sequence {
 pub struct Matrix<T:Clone> {
     width:   usize,
     height:  usize,
-    data :   Vec<T>
+    data :   Vec<T>,
 }
 
 impl<T:Clone> Matrix<T> {
@@ -91,29 +89,31 @@ enum SeqNode {
 
 
 pub struct AlnParams {
-    llocal:     bool,           // global or local on the left?
-    rlocal:     bool,           // global or local on the right?
+    llocal:     bool,        // global or local on the left?
+    rlocal:     bool,        // global or local on the right?
     max_indel:  Option<u8>,  // maximum number of indels before short-circuiting
-    gap_open:   i16,          // penalty for opening a gap
-    gap_ext:    i16,          // gap extention penalty
+    gap_open:   i16,         // penalty for opening a gap
+    gap_ext:    i16,         // gap extention penalty
+    mismatch:   i16,         // mismatch penalty
 }
 
 impl AlnParams {
     pub fn new(  _llocal: Option<bool>, _rlocal: Option<bool>, _max_indel: Option<u8>,
-                 _gap_open: Option<i16>, _gap_ext: Option<i16> ) -> AlnParams {
+                 _gap_open: Option<i16>, _gap_ext: Option<i16>, _mismatch: i16 ) -> AlnParams {
         AlnParams {
             llocal:     match _llocal { Some(b) => b, None => true },
             rlocal:     match _rlocal { Some(b) => b, None => true },
             max_indel:  _max_indel,
             gap_open:   match _gap_open { Some(g) => g, None => -1 },
             gap_ext:    match _gap_ext { Some(g) => g, None => -1 },
-
+            mismatch:   _mismatch,
         }
     }
 }
 
 #[derive(Debug)]
 pub enum AlnState {
+    Nil,
     Match,
     Mismatch,
     Ins,
@@ -124,6 +124,7 @@ pub enum AlnState {
 impl PartialEq for AlnState {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (&AlnState::Nil, &AlnState::Nil) => true,
             (&AlnState::Match, &AlnState::Match) => true,
             (&AlnState::Mismatch, &AlnState::Mismatch) => true,
             (&AlnState::Ins, &AlnState::Ins) => true,
@@ -138,10 +139,11 @@ impl Eq for AlnState {}
 //        4 bits for AlnState and 28 bits get munged into an i32
 pub fn pack_cell( state : AlnState, score : i16 ) -> i32 {
     let _state : i32 = match state {
-        AlnState::Match => (0 << 16) | 0xffff,
-        AlnState::Mismatch => (1 << 16) | 0xffff,
-        AlnState::Ins => (2 << 16) | 0xffff,
-        AlnState::Del => (3 << 16) | 0xffff };
+        AlnState::Nil =>  0xffff,
+        AlnState::Match => (1 << 16) | 0xffff,
+        AlnState::Mismatch => (2 << 16) | 0xffff,
+        AlnState::Ins => (3 << 16) | 0xffff,
+        AlnState::Del => (4 << 16) | 0xffff };
     let _score : i32 = (score as i32) | 0xffff0000;
     (_score & _state)
 }
@@ -149,18 +151,32 @@ pub fn pack_cell( state : AlnState, score : i16 ) -> i32 {
 pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
     let state = try!(
         match packed >> 16 {
-            0 => Ok(AlnState::Match),
-            1 => Ok(AlnState::Mismatch),
-            2 => Ok(AlnState::Ins),
-            3 => Ok(AlnState::Del),
+            0 => Ok(AlnState::Nil),
+            1 => Ok(AlnState::Match),
+            2 => Ok(AlnState::Mismatch),
+            3 => Ok(AlnState::Ins),
+            4 => Ok(AlnState::Del),
             _ => Err(()) }
     );
     Ok( (state, packed as i16) )
 }
 
-pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<()> {
+pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<Matrix<i32>> {
     let mut m = Matrix::<i32>::new( 0, reference.len() + 1, query.len() + 1 );
-    
+    let ref_len : i32 = reference.len() as i32;
+    let query_len : i32 = query.len() as i32;
+    for i in (0 .. ref_len).rev() {
+        for j in (0 .. query_len).rev() {
+            let (dstate, del) = unpack_cell( m[ (i+1, j) ] ).unwrap();
+            let del_score = del + match (params.rlocal && i == ref_len, dstate) {
+                (true, _) => 0,
+                (_, AlnState::Del) => params.gap_ext,
+                _ => params.gap_open
+            };
+            
+            
+        }
+    }
     None
 }
 
@@ -188,5 +204,4 @@ fn main() {
     let _ = pack_cell( AlnState::Del, -1 );
     assert_eq!( unpack_cell( pack_cell( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
     assert_eq!( unpack_cell( pack_cell( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
-
 }
