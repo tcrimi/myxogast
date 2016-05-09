@@ -3,6 +3,9 @@ extern crate rustc_serialize;
 use rustc_serialize::json;
 use std::ops::{Index,IndexMut};
 use std::clone::Clone;
+use std::fmt;
+use std::fmt::Debug;
+
 
 pub type Mmer = u8;
 
@@ -38,7 +41,7 @@ impl Index<i32> for Sequence {
 }
 
 
-#[derive(Debug,RustcDecodable,RustcEncodable)]
+#[derive(RustcDecodable,RustcEncodable)]
 pub struct Matrix<T:Clone> {
     width:   usize,
     height:  usize,
@@ -68,7 +71,7 @@ impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
         let b2 : usize = if b < 0 {self.height - (b.abs() as usize)} else {b as usize};
-        return &self.data[ a2 * self.width + b2 ];
+        return &self.data[ a2 * self.height + b2 ];
     }
 }
 
@@ -77,9 +80,24 @@ impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
         let b2 : usize = if b < 0 {self.height - (b.abs() as usize)} else {b as usize};
-        return &mut self.data[ a2 * self.width + b2 ];
+        return &mut self.data[ a2 * self.height + b2 ];
     }
 }
+
+
+impl<T:Clone + Debug> fmt::Debug for Matrix<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s : String = String::new();
+        for i in 0 .. self.height {
+            let x = &self.data[ (i * self.width) .. ((i+1) * self.width) ];
+            s.push_str( &format!("{:?}\n", x));
+        }
+        write!(f, "{}", s)
+    }
+}
+
+
+
 
 
 // used to store HMMer-style probabilities; dimensions: BASE-COUNT x REF-LENGTH
@@ -121,7 +139,7 @@ impl AlnParams {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum AlnState {
     Nil,
     Match,
@@ -144,71 +162,89 @@ impl PartialEq for AlnState {
 }
 impl Eq for AlnState {} 
 
-// bit-packing operations
-// FIXME: i16 might not be enough, so I should investigate a different division, eg
-//        4 bits for AlnState and 28 bits get munged into an i32
-pub fn pack_cell( state : AlnState, score : i16 ) -> i32 {
-    let _state : i32 = match state {
-        AlnState::Nil =>  0xffff,
-        AlnState::Match => (1 << 16) | 0xffff,
-        AlnState::Mismatch => (2 << 16) | 0xffff,
-        AlnState::Ins => (3 << 16) | 0xffff,
-        AlnState::Del => (4 << 16) | 0xffff };
-    let _score : i32 = (score as i32) | 0xffff0000;
-    (_score & _state)
+#[derive(Clone)]
+pub struct Cell(pub i32);
+
+impl Cell {
+    // bit-packing operations
+    // FIXME: i16 might not be enough, so I should investigate a different division, eg
+    //        4 bits for AlnState and 28 bits get munged into an i32
+    pub fn pack( state : AlnState, score : i16 ) -> Cell {
+        let _state : i32 = match state {
+            AlnState::Nil =>  0xffff,
+            AlnState::Match => (1 << 16) | 0xffff,
+            AlnState::Mismatch => (2 << 16) | 0xffff,
+            AlnState::Ins => (3 << 16) | 0xffff,
+            AlnState::Del => (4 << 16) | 0xffff };
+        let _score : i32 = (score as i32) | 0xffff0000;
+        Cell(_score & _state)
+    }
+
+    pub fn unpack( c : Cell ) -> Result<(AlnState, i16), ()> {
+        let Cell(packed) = c;
+        let state = try!(
+            match packed >> 16 {
+                0 => Ok(AlnState::Nil),
+                1 => Ok(AlnState::Match),
+                2 => Ok(AlnState::Mismatch),
+                3 => Ok(AlnState::Ins),
+                4 => Ok(AlnState::Del),
+                _ => Err(()) }
+        );
+        Ok( (state, packed as i16) )
+    }
 }
 
-pub fn unpack_cell( packed : i32 ) -> Result<(AlnState, i16), ()> {
-    let state = try!(
-        match packed >> 16 {
-            0 => Ok(AlnState::Nil),
-            1 => Ok(AlnState::Match),
-            2 => Ok(AlnState::Mismatch),
-            3 => Ok(AlnState::Ins),
-            4 => Ok(AlnState::Del),
-            _ => Err(()) }
-    );
-    Ok( (state, packed as i16) )
+impl fmt::Debug for Cell {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (a, b) = Cell::unpack( self.clone() ).unwrap();
+        write!(f, "{:?}({})", a, b)
+    }
 }
+
+
 
 /// Dynamic-programming alignment
 /// params can specify a max_indel, in which case this can return None if a
 ///   solution can't be found with fewer indels
 ///
-pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<Matrix<i32>> {
-    let mut m = Matrix::<i32>::new( 0, reference.len() + 1, query.len() + 1 );
+pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<Matrix<Cell>> {
+    let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 1, query.len() + 1 );
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
+    let mut trail : Vec<AlnState> = vec![];
     for i in (0 .. ref_len).rev() {
         for j in (0 .. query_len).rev() {
-            let (dstate, del) = unpack_cell( m[ (i+1, j) ] ).unwrap();
+            let (dstate, del) = Cell::unpack( m[ (i+1, j) ].clone() ).unwrap();
             let del_score = del + match (params.rlocal && i == ref_len, dstate) {
                 (true, _) => 0,
                 (_, AlnState::Del) => params.gap_ext,
                 _ => params.gap_open
             };
 
-            let (istate, ins) = unpack_cell( m[ (i, j+1) ] ).unwrap();
+            let (istate, ins) = Cell::unpack( m[ (i, j+1) ].clone() ).unwrap();
             let ins_score = ins + match (params.llocal && j == query_len, istate) {
                 (true, _) => 0,
                 (_, AlnState::Ins) => params.gap_ext,
                 _ => params.gap_open
             };
 
-            let (_, diag) = unpack_cell( m[ (i+1, j+1) ] ).unwrap();
-            let diag_score = diag + (if (reference[i] == query[j]) {params.equal} else {params.mismatch});
+            let (_, diag) = Cell::unpack( m[ (i+1, j+1) ].clone() ).unwrap();
+            let diag_score = diag + (if reference[i] == query[j] {params.equal} else {params.mismatch});
 
             let (a,b) = {
-                if (diag_score >= del_score && diag_score >= ins_score) {
-                    (if (reference[i] == query[j]) {AlnState::Match} else {AlnState::Mismatch}, diag_score)
-                } else if (del_score > diag_score && del_score >= ins_score) {
+                if diag_score >= del_score && diag_score >= ins_score {
+                    (if reference[i] == query[j] {AlnState::Match} else {AlnState::Mismatch}, diag_score)
+                } else if del_score > diag_score && del_score >= ins_score {
                     (AlnState::Del, del_score)
                 } else {
                     (AlnState::Ins, ins_score)
                 }};
-            m[ (i, j) ] = pack_cell( a, b );
+            m[ (i, j) ] = Cell::pack( a.clone(), b );
+            trail.push( a.clone() );
         }
     };
+    println!("trail: {:?}", trail);
     Some(m)
 }
 
@@ -231,11 +267,8 @@ fn main() {
     let r = Sequence::from_str("atgcn");
     println!("{:?}", r);
 
-    let _ = pack_cell( AlnState::Match, -1 );
-    let _ = pack_cell( AlnState::Mismatch, -1 );
-    let _ = pack_cell( AlnState::Del, -1 );
-    assert_eq!( unpack_cell( pack_cell( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
-    assert_eq!( unpack_cell( pack_cell( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
+    assert_eq!( Cell::unpack( Cell::pack( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
+    assert_eq!( Cell::unpack( Cell::pack( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
 
     let params = AlnParams {
         llocal:    true,
@@ -245,7 +278,8 @@ fn main() {
         gap_ext:   -1,
         mismatch:  -1,
         equal:     1 };
-    let x = align( Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap(), Sequence::from_str("TGCTCG").unwrap(), params );
-    println!("{:?}", x);
-
+    let x = align( Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap(),
+                   Sequence::from_str("TGCTCG").unwrap(),
+                   params );
+    println!("\n{:?}", x.unwrap());
 }
