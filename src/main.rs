@@ -63,6 +63,16 @@ impl<T:Clone> Matrix<T> {
             }
         }
     }
+    /*
+    pub fn map<T,F>(&'a self, f: F) -> Matrix<B>
+    where F: &T -> B {
+        Matrix {
+            width:  self.width,
+            height: self.height,
+            data:   self.data.map(f)
+        }
+    }
+    */
 }
 
 impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
@@ -71,7 +81,7 @@ impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
         let b2 : usize = if b < 0 {self.height - (b.abs() as usize)} else {b as usize};
-        return &self.data[ a2 * self.height + b2 ];
+        return &self.data[ b2 * self.width + a2 ];
     }
 }
 
@@ -80,7 +90,7 @@ impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
         let b2 : usize = if b < 0 {self.height - (b.abs() as usize)} else {b as usize};
-        return &mut self.data[ a2 * self.height + b2 ];
+        return &mut self.data[ b2 * self.width + a2 ];
     }
 }
 
@@ -213,33 +223,45 @@ pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Optio
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
     let mut trail : Vec<AlnState> = vec![];
-    for i in (0 .. ref_len).rev() {
-        for j in (0 .. query_len).rev() {
-            let (dstate, del) = Cell::unpack( m[ (i+1, j) ].clone() ).unwrap();
+
+    // initialize edges
+    if !params.llocal {
+        for i in 0 .. ref_len + 1 { m[ (i as i32, 0) ] = Cell::pack( AlnState::Nil, -i as i16); }
+    }
+    for j in 0i16 .. (query_len + 1) as i16 { m[ (0, j as i32) ] = Cell::pack( AlnState::Nil, -j as i16); }
+
+    println!("-- initialized:\n");
+    println!("{:?}\n", Matrix { width: m.width, height: m.height,
+                                data: m.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() });
+
+    for i in 1 .. ref_len {
+        for j in 1 .. query_len {
+
+            let (dstate, del) = Cell::unpack( m[ (i-1, j) ].clone() ).unwrap();
             let del_score = del + match (params.rlocal && i == ref_len, dstate) {
                 (true, _) => 0,
                 (_, AlnState::Del) => params.gap_ext,
                 _ => params.gap_open
             };
 
-            let (istate, ins) = Cell::unpack( m[ (i, j+1) ].clone() ).unwrap();
-            let ins_score = ins + match (params.llocal && j == query_len, istate) {
-                (true, _) => 0,
-                (_, AlnState::Ins) => params.gap_ext,
-                _ => params.gap_open
-            };
+            let (istate, ins) = Cell::unpack( m[ (i, j-1) ].clone() ).unwrap();
+            let ins_score = ins + if istate == AlnState::Ins { params.gap_ext } else { params.gap_open };
 
-            let (_, diag) = Cell::unpack( m[ (i+1, j+1) ].clone() ).unwrap();
-            let diag_score = diag + (if reference[i] == query[j] {params.equal} else {params.mismatch});
+            let (_, diag) = Cell::unpack( m[ (i-1, j-1) ].clone() ).unwrap();
+            let diag_score = diag + if reference[i-1] == query[j-1] { params.equal } else { params.mismatch };
+
+            println!("@@@ diag={}, diag_score+{}", diag, if reference[i-1] == query[j-1] { params.equal } else { params.mismatch });
 
             let (a,b) = {
                 if diag_score >= del_score && diag_score >= ins_score {
-                    (if reference[i] == query[j] {AlnState::Match} else {AlnState::Mismatch}, diag_score)
+                    (if reference[i-1] == query[j-1] {AlnState::Match} else {AlnState::Mismatch}, diag_score)
                 } else if del_score > diag_score && del_score >= ins_score {
                     (AlnState::Del, del_score)
                 } else {
                     (AlnState::Ins, ins_score)
                 }};
+            println!("@@ [{},{}]: del={}, ins={}, diag={} -> {}", i, j, del_score, ins_score, diag_score, b);
+
             m[ (i, j) ] = Cell::pack( a.clone(), b );
             trail.push( a.clone() );
         }
@@ -249,7 +271,7 @@ pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Optio
 }
 
 pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
-    let mut m = Matrix::<f32>::new( 0., reference.width + 1, query.len() + 1 );
+    //let mut m = Matrix::<f32>::new( 0., reference.width + 1, query.len() + 1 );
     None
 }
 
@@ -271,15 +293,25 @@ fn main() {
     assert_eq!( Cell::unpack( Cell::pack( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
 
     let params = AlnParams {
-        llocal:    true,
-        rlocal:    true,
+        llocal:    false,
+        rlocal:    false,
         max_indel: None,
         gap_open:  -1,
         gap_ext:   -1,
         mismatch:  -1,
         equal:     1 };
+
     let x = align( Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap(),
                    Sequence::from_str("TGCTCG").unwrap(),
-                   params );
-    println!("\n{:?}", x.unwrap());
+                   params ).unwrap();
+
+    /*
+    let x = align( Sequence::from_str("TGCCG").unwrap(),
+                   Sequence::from_str("TGCTCG").unwrap(),
+                   params ).unwrap();
+     */
+    println!("\n{:?}\n\n", x );
+
+    let x_scores = Matrix { width: x.width, height: x.height, data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
+    println!("\n{:?}", x_scores );
 }
