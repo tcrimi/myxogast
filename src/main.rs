@@ -5,9 +5,10 @@ use std::ops::{Index,IndexMut};
 use std::clone::Clone;
 use std::fmt;
 use std::fmt::Debug;
-
+use std::cmp::max;
 
 pub type Mmer = u8;
+const HYPHEN : Mmer = 4;
 
 #[derive(Debug,RustcDecodable,RustcEncodable)]
 pub struct Sequence( Vec<Mmer> );
@@ -21,6 +22,7 @@ impl Sequence {
                 'T' => Ok(1),
                 'G' => Ok(2),
                 'C' => Ok(3),
+                '-' => Ok(HYPHEN),
                 _   => Err(format!("unrecognized base: {}", ch))
             } )
             .collect();
@@ -31,6 +33,25 @@ impl Sequence {
     }
     fn len(&self) -> usize { self.0.len() }
 }
+
+
+impl fmt::Display for Sequence {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        let viz = |ch : &Mmer| -> char { match *ch {
+            0 => 'A',
+            1 => 'T',
+            2 => 'G',
+            3 => 'C',
+            HYPHEN => '-',
+            _ => 'X' }};
+
+        let s : String = self.0.iter().map( viz ).collect();
+
+        write!(f, "{}", s)
+    }
+}
+
 
 impl Index<i32> for Sequence {
     type Output = Mmer;
@@ -105,8 +126,6 @@ impl<T:Clone + Debug> fmt::Debug for Matrix<T> {
         write!(f, "{}", s)
     }
 }
-
-
 
 
 
@@ -218,11 +237,10 @@ impl fmt::Debug for Cell {
 /// params can specify a max_indel, in which case this can return None if a
 ///   solution can't be found with fewer indels
 ///
-pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Option<Matrix<Cell>> {
-    let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 1, query.len() + 1 );
+pub fn align( reference: &Sequence, query: &Sequence, params: AlnParams ) -> Option<Matrix<Cell>> {
+    let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
-    let mut trail : Vec<AlnState> = vec![];
 
     // initialize edges
     if !params.llocal {
@@ -263,10 +281,8 @@ pub fn align( reference: Sequence, query: Sequence, params: AlnParams ) -> Optio
             println!("@@ [{},{}]: del={}, ins={}, diag={} -> {}", i, j, del_score, ins_score, diag_score, b);
 
             m[ (i, j) ] = Cell::pack( a.clone(), b );
-            trail.push( a.clone() );
         }
     };
-    println!("trail: {:?}", trail);
     Some(m)
 }
 
@@ -275,6 +291,56 @@ pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> O
     None
 }
 
+pub fn padded_aln_str( reference : &Sequence, query : &Sequence, alignment : &Matrix<Cell> ) -> (Sequence, Sequence) {
+
+    let ref_len : i32 = reference.len() as i32;
+    let query_len : i32 = query.len() as i32;
+
+    let mut padded_ref : Vec<Mmer> = vec![0; max( reference.len(), query.len() )];
+    let mut padded_query : Vec<Mmer> = vec![0; max( reference.len(), query.len() )];
+    let mut i = 1i32;
+    let mut j = 1i32;
+
+    while i < ref_len || j < query_len {
+
+        let (_, m_sc) = Cell::unpack( alignment[ (i+1, j+1) ].clone() ).unwrap();
+        let (_, r_sc) = Cell::unpack( alignment[ (i+1, j) ].clone() ).unwrap();
+        let (_, d_sc) = Cell::unpack( alignment[ (i, j+1) ].clone() ).unwrap();
+
+        if i < ref_len && j < query_len {
+            if m_sc >= r_sc && m_sc >= d_sc {
+                i += 1;
+                j += 1;
+ 
+                padded_ref.push( reference[i-1] );
+                padded_query.push( query[j-1] );
+
+            } else if r_sc >= m_sc && r_sc >= d_sc {
+                i += 1;
+
+                padded_ref.push( reference[i-1] );
+                padded_query.push(HYPHEN);
+
+            } else {
+                j += 1;
+
+                padded_ref.push(HYPHEN);
+                padded_query.push( query[j-1] );
+            }
+        } else if i < ref_len {
+            i += 1;
+            padded_ref.push( reference[i-1] );
+            padded_query.push(HYPHEN);
+
+        } else {
+            j += 1;
+            padded_ref.push(HYPHEN);
+            padded_query.push( query[j-1] );
+
+        }
+    }
+    (Sequence(padded_ref), Sequence(padded_query))
+}
 
 fn main() {
     let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
@@ -301,10 +367,13 @@ fn main() {
         mismatch:  -1,
         equal:     1 };
 
-    let x = align( Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap(),
-                   Sequence::from_str("TGCTCG").unwrap(),
-                   params ).unwrap();
+    let reference = Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap();
+    let query = Sequence::from_str("TGCTCG").unwrap();
+    let x = align( &reference, &query, params ).unwrap();
 
+    let (r, q) = padded_aln_str( &reference, &query, &x );
+    
+    println!("{}\n{}", r, q);
     /*
     let x = align( Sequence::from_str("TGCCG").unwrap(),
                    Sequence::from_str("TGCTCG").unwrap(),
@@ -312,6 +381,7 @@ fn main() {
      */
     println!("\n{:?}\n\n", x );
 
-    let x_scores = Matrix { width: x.width, height: x.height, data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
+    let x_scores = Matrix { width: x.width, height: x.height,
+                            data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
     println!("\n{:?}", x_scores );
 }
