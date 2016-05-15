@@ -237,7 +237,7 @@ impl fmt::Debug for Cell {
 /// params can specify a max_indel, in which case this can return None if a
 ///   solution can't be found with fewer indels
 ///
-pub fn align( reference: &Sequence, query: &Sequence, params: AlnParams ) -> Option<Matrix<Cell>> {
+pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Option<Matrix<Cell>> {
     let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
@@ -268,8 +268,6 @@ pub fn align( reference: &Sequence, query: &Sequence, params: AlnParams ) -> Opt
             let (_, diag) = Cell::unpack( m[ (i-1, j-1) ].clone() ).unwrap();
             let diag_score = diag + if reference[i-1] == query[j-1] { params.equal } else { params.mismatch };
 
-            println!("@@@ diag={}, diag_score+{}", diag, if reference[i-1] == query[j-1] { params.equal } else { params.mismatch });
-
             let (a,b) = {
                 if diag_score >= del_score && diag_score >= ins_score {
                     (if reference[i-1] == query[j-1] {AlnState::Match} else {AlnState::Mismatch}, diag_score)
@@ -278,7 +276,6 @@ pub fn align( reference: &Sequence, query: &Sequence, params: AlnParams ) -> Opt
                 } else {
                     (AlnState::Ins, ins_score)
                 }};
-            println!("@@ [{},{}]: del={}, ins={}, diag={} -> {}", i, j, del_score, ins_score, diag_score, b);
 
             m[ (i, j) ] = Cell::pack( a.clone(), b );
         }
@@ -296,10 +293,10 @@ pub fn padded_aln_str( reference : &Sequence, query : &Sequence, alignment : &Ma
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
 
-    let mut padded_ref : Vec<Mmer> = vec![0; max( reference.len(), query.len() )];
-    let mut padded_query : Vec<Mmer> = vec![0; max( reference.len(), query.len() )];
-    let mut i = 1i32;
-    let mut j = 1i32;
+    let mut padded_ref : Vec<Mmer> = Vec::new();
+    let mut padded_query : Vec<Mmer> = Vec::new();
+    let mut i = 0i32;
+    let mut j = 0i32;
 
     while i < ref_len || j < query_len {
 
@@ -338,6 +335,9 @@ pub fn padded_aln_str( reference : &Sequence, query : &Sequence, alignment : &Ma
             padded_query.push( query[j-1] );
 
         }
+
+        println!("round - i={}, j={}, padded_ref={}, padded_query={}", i, j,
+                 padded_ref.last().unwrap(), padded_query.last().unwrap());
     }
     (Sequence(padded_ref), Sequence(padded_query))
 }
@@ -367,21 +367,33 @@ fn main() {
         mismatch:  -1,
         equal:     1 };
 
+    let s = "ATGCATGC";
+    assert_eq!( format!("{}", Sequence::from_str(s).unwrap()), s);
+
+    /*
     let reference = Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap();
     let query = Sequence::from_str("TGCTCG").unwrap();
-    let x = align( &reference, &query, params ).unwrap();
+    let x = align( &reference, &query, &params ).unwrap();
 
     let (r, q) = padded_aln_str( &reference, &query, &x );
-    
     println!("{}\n{}", r, q);
-    /*
-    let x = align( Sequence::from_str("TGCCG").unwrap(),
-                   Sequence::from_str("TGCTCG").unwrap(),
-                   params ).unwrap();
-     */
     println!("\n{:?}\n\n", x );
+    */
 
+    let ref2 = Sequence::from_str("ATGCAT").unwrap();
+    let q2 = Sequence::from_str("ATGCA").unwrap();
+
+    for ii in 0 .. ref2.len() {
+        println!("ref2[{}]: {}", ii, ref2[ii as i32]);
+    }
+
+
+    let (r2, q2) = padded_aln_str( &ref2, &q2, &(align( &ref2, &q2, &params ).unwrap()) );
+    println!("{}\n{}", r2, q2);
+
+    /*
     let x_scores = Matrix { width: x.width, height: x.height,
                             data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
     println!("\n{:?}", x_scores );
+     */
 }
