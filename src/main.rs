@@ -63,7 +63,7 @@ impl Index<i32> for Sequence {
 
 
 #[derive(RustcDecodable,RustcEncodable)]
-pub struct Matrix<T:Clone> {
+pub struct Matrix<T> {
     width:   usize,
     height:  usize,
     data :   Vec<T>,
@@ -96,7 +96,7 @@ impl<T:Clone> Matrix<T> {
     */
 }
 
-impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
+impl<T> Index<(i32, i32)> for Matrix<T> {
     type Output = T;
     fn index<'a>(&'a self, _index: (i32, i32)) -> &'a T {
         let (a, b) = _index;
@@ -106,7 +106,7 @@ impl<T:Clone> Index<(i32, i32)> for Matrix<T> {
     }
 }
 
-impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
+impl<T> IndexMut<(i32, i32)> for Matrix<T> {
     fn index_mut<'a>(&'a mut self, _index: (i32, i32)) -> &'a mut T {
         let (a, b) = _index;
         let a2 : usize = if a < 0 {self.width - (a.abs() as usize)} else {a as usize};
@@ -116,7 +116,7 @@ impl<T:Clone> IndexMut<(i32, i32)> for Matrix<T> {
 }
 
 
-impl<T:Clone + Debug> fmt::Debug for Matrix<T> {
+impl<T:Debug> fmt::Debug for Matrix<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s : String = String::new();
         for i in 0 .. self.height {
@@ -198,19 +198,19 @@ impl Cell {
     // bit-packing operations
     // FIXME: i16 might not be enough, so I should investigate a different division, eg
     //        4 bits for AlnState and 28 bits get munged into an i32
-    pub fn pack( state : AlnState, score : i16 ) -> Cell {
-        let _state : i32 = match state {
+    pub fn pack( state : &AlnState, score : &i16 ) -> Cell {
+        let _state : i32 = match *state {
             AlnState::Nil =>  0xffff,
             AlnState::Match => (1 << 16) | 0xffff,
             AlnState::Mismatch => (2 << 16) | 0xffff,
             AlnState::Ins => (3 << 16) | 0xffff,
             AlnState::Del => (4 << 16) | 0xffff };
-        let _score : i32 = (score as i32) | 0xffff0000;
+        let _score : i32 = (*score as i32) | 0xffff0000;
         Cell(_score & _state)
     }
 
-    pub fn unpack( c : Cell ) -> Result<(AlnState, i16), ()> {
-        let Cell(packed) = c;
+    pub fn unpack( c : &Cell ) -> Result<(AlnState, i16), ()> {
+        let Cell(packed) = *c;
         let state = try!(
             match packed >> 16 {
                 0 => Ok(AlnState::Nil),
@@ -226,7 +226,7 @@ impl Cell {
 
 impl fmt::Debug for Cell {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (a, b) = Cell::unpack( self.clone() ).unwrap();
+        let (a, b) = Cell::unpack( &self ).unwrap();
         write!(f, "{:?}({})", a, b)
     }
 }
@@ -244,28 +244,25 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Op
 
     // initialize edges
     if !params.llocal {
-        for i in 0 .. ref_len + 1 { m[ (i as i32, 0) ] = Cell::pack( AlnState::Nil, -i as i16); }
+        for i in 0 .. ref_len + 1 { m[ (i as i32, 0) ] = Cell::pack( &AlnState::Nil, &(-i as i16)); }
     }
-    for j in 0i16 .. (query_len + 1) as i16 { m[ (0, j as i32) ] = Cell::pack( AlnState::Nil, -j as i16); }
+    for j in 0i16 .. (query_len + 1) as i16 { m[ (0, j as i32) ] = Cell::pack( &AlnState::Nil, &(-j as i16)); }
 
-    println!("-- initialized:\n");
-    println!("{:?}\n", Matrix { width: m.width, height: m.height,
-                                data: m.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() });
 
     for i in 1 .. ref_len {
         for j in 1 .. query_len {
 
-            let (dstate, del) = Cell::unpack( m[ (i-1, j) ].clone() ).unwrap();
+            let (dstate, del) = Cell::unpack( &m[ (i-1, j) ] ).unwrap();
             let del_score = del + match (params.rlocal && i == ref_len, dstate) {
                 (true, _) => 0,
                 (_, AlnState::Del) => params.gap_ext,
                 _ => params.gap_open
             };
 
-            let (istate, ins) = Cell::unpack( m[ (i, j-1) ].clone() ).unwrap();
+            let (istate, ins) = Cell::unpack( &m[ (i, j-1) ] ).unwrap();
             let ins_score = ins + if istate == AlnState::Ins { params.gap_ext } else { params.gap_open };
 
-            let (_, diag) = Cell::unpack( m[ (i-1, j-1) ].clone() ).unwrap();
+            let (_, diag) = Cell::unpack( &m[ (i-1, j-1) ] ).unwrap();
             let diag_score = diag + if reference[i-1] == query[j-1] { params.equal } else { params.mismatch };
 
             let (a,b) = {
@@ -277,9 +274,14 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Op
                     (AlnState::Ins, ins_score)
                 }};
 
-            m[ (i, j) ] = Cell::pack( a.clone(), b );
+            m[ (i, j) ] = Cell::pack( &a, &b );
         }
     };
+
+    println!("-- finished:\n");
+    println!("{:?}\n", Matrix { width: m.width, height: m.height,
+                                data: m.data.iter().map( |c| Cell::unpack(&c).unwrap().1 ).collect() });
+
     Some(m)
 }
 
@@ -300,36 +302,39 @@ pub fn padded_aln_str( reference : &Sequence, query : &Sequence, alignment : &Ma
 
     while i < ref_len || j < query_len {
 
-        let (_, m_sc) = Cell::unpack( alignment[ (i+1, j+1) ].clone() ).unwrap();
-        let (_, r_sc) = Cell::unpack( alignment[ (i+1, j) ].clone() ).unwrap();
-        let (_, d_sc) = Cell::unpack( alignment[ (i, j+1) ].clone() ).unwrap();
+        let (_, m_sc) = Cell::unpack( &alignment[ (i+1, j+1) ] ).unwrap();
+        let (_, r_sc) = Cell::unpack( &alignment[ (i+1, j) ] ).unwrap();
+        let (_, d_sc) = Cell::unpack( &alignment[ (i, j+1) ] ).unwrap();
 
         if i < ref_len && j < query_len {
             if m_sc >= r_sc && m_sc >= d_sc {
                 i += 1;
                 j += 1;
- 
+                println!("@@ diag={}", m_sc);
                 padded_ref.push( reference[i-1] );
                 padded_query.push( query[j-1] );
 
             } else if r_sc >= m_sc && r_sc >= d_sc {
                 i += 1;
-
+                println!("@@ A - right={} > (diag={}, down={})", r_sc, m_sc, d_sc);
                 padded_ref.push( reference[i-1] );
                 padded_query.push(HYPHEN);
 
             } else {
                 j += 1;
-
+                println!("@@ B");
                 padded_ref.push(HYPHEN);
                 padded_query.push( query[j-1] );
             }
         } else if i < ref_len {
+            println!("@@ padding query");
             i += 1;
             padded_ref.push( reference[i-1] );
             padded_query.push(HYPHEN);
 
         } else {
+            println!("@@ padding ref");
+
             j += 1;
             padded_ref.push(HYPHEN);
             padded_query.push( query[j-1] );
@@ -355,8 +360,8 @@ fn main() {
     let r = Sequence::from_str("atgcn");
     println!("{:?}", r);
 
-    assert_eq!( Cell::unpack( Cell::pack( AlnState::Ins, -10 ) ).unwrap(), (AlnState::Ins, -10) );
-    assert_eq!( Cell::unpack( Cell::pack( AlnState::Match, 222 ) ).unwrap(), (AlnState::Match, 222) );
+    assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Ins, &-10 ) ).unwrap(), (AlnState::Ins, -10) );
+    assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Match, &222 ) ).unwrap(), (AlnState::Match, 222) );
 
     let params = AlnParams {
         llocal:    false,
@@ -383,13 +388,8 @@ fn main() {
     let ref2 = Sequence::from_str("ATGCAT").unwrap();
     let q2 = Sequence::from_str("ATGCA").unwrap();
 
-    for ii in 0 .. ref2.len() {
-        println!("ref2[{}]: {}", ii, ref2[ii as i32]);
-    }
-
-
     let (r2, q2) = padded_aln_str( &ref2, &q2, &(align( &ref2, &q2, &params ).unwrap()) );
-    println!("{}\n{}", r2, q2);
+    println!("R: {}\nQ: {}", r2, q2);
 
     /*
     let x_scores = Matrix { width: x.width, height: x.height,
