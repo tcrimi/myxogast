@@ -105,10 +105,16 @@ impl Eq for AlnState {}
 /// params can specify a max_indel, in which case this can return None if a
 ///   solution can't be found with fewer indels
 ///
-pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Option<Matrix<Cell>> {
+/// returns Option(m, i, j), where m is the alignment matrix, and i,j is the
+///   the location of the cell with the highest value
+///
+pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Option<(Matrix<Cell>, i32, i32)> {
     let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
+
+    let mut best_val : i16 = i16::min_value();
+    let mut best_loc : (i32, i32) = (0,0);
 
     // initialize edges
     if !params.llocal {
@@ -143,6 +149,11 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Op
                     (AlnState::Ins, ins_score)
                 }};
 
+            if b > best_val {
+                best_val = b;
+                best_loc = (i, j);
+            }
+
             m[ (i, j) ] = Cell::pack( &a, &b );
         }
     };
@@ -151,7 +162,7 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Op
     println!("{:?}\n", Matrix { width: m.width, height: m.height,
                                 data: m.data.iter().map( |c| Cell::unpack(&c).unwrap().1 ).collect() });
 
-    Some(m)
+    Some((m, best_loc.0, best_loc.1))
 }
 
 pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
