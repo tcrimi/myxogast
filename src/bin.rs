@@ -48,16 +48,15 @@ fn main() {
 
     let reference = Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap();
     let query = Sequence::from_str("TGCTCG").unwrap();
-    let x = align( &reference, &query, &params ).unwrap();
 
-    let (r, q) = padded_aln_str( &reference, &query, &x.0 );
+    let (r, q) = align( &reference, &query, &params ).unwrap();
     println!("R: {}\nQ: {}\n", reference, query);
 
 
     let ref2 = Sequence::from_str("ATGCAT").unwrap();
     let q2 = Sequence::from_str("ATGCA").unwrap();
 
-    let (r2, q2) = padded_aln_str( &ref2, &q2, &(align( &ref2, &q2, &params ).unwrap().0) );
+    let (r2, q2) = align( &ref2, &q2, &params ).unwrap();
     println!("R: {}\nQ: {}", r2, q2);
 
     /*

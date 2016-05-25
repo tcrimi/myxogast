@@ -1,12 +1,13 @@
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::{Index,IndexMut};
+use std::ops::Add;
 
 
 pub type Mmer = u8;
 pub const HYPHEN : Mmer = 4;
 
-#[derive(Debug,RustcDecodable,RustcEncodable)]
+#[derive(Debug,Clone,RustcDecodable,RustcEncodable)]
 pub struct Sequence( pub Vec<Mmer> );
 
 fn base_to_char( ch : Mmer ) -> char {
@@ -16,7 +17,7 @@ fn base_to_char( ch : Mmer ) -> char {
         2 => 'G',
         3 => 'C',
         HYPHEN => '-',
-        _ => 'X' }  
+        _ => 'X' }
 }
 
 impl Sequence {
@@ -38,6 +39,19 @@ impl Sequence {
         }
     }
     pub fn len(&self) -> usize { self.0.len() }
+    pub fn reverse(&self) -> Sequence {
+        let mut x = self.0.clone();
+        Sequence(x) }
+}
+
+impl Add for Sequence {
+    type Output = Sequence;
+
+    fn add(self, rhs: Sequence) -> Sequence {
+        let mut a = self.0.clone();
+        a.extend( rhs.0.iter().cloned() );
+        Sequence( a )
+    }
 }
 
 
