@@ -50,14 +50,14 @@ fn main() {
     let query = Sequence::from_str("TGCTCG").unwrap();
 
     let (r, q) = align( &reference, &query, &params ).unwrap();
-    println!("R: {}\nQ: {}\n", reference, query);
-
+    assert_eq!( r, reference );
+    assert_eq!( q, Sequence::from_str("-----TGCTCG--------").unwrap() );
 
     let ref2 = Sequence::from_str("ATGCAT").unwrap();
-    let q2 = Sequence::from_str("ATGCA").unwrap();
-
-    let (r2, q2) = align( &ref2, &q2, &params ).unwrap();
-    println!("R: {}\nQ: {}", r2, q2);
+    let query2 = Sequence::from_str("ATGCA").unwrap();
+    let (r2, q2) = align( &ref2, &query2, &params ).unwrap();
+    assert_eq!( r2, ref2 );
+    assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
     /*
     let x_scores = Matrix { width: x.width, height: x.height,

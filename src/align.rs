@@ -137,8 +137,6 @@ fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams ) ->
 
             let (_, diag) = Cell::unpack( &m[ (i-1, j-1) ] ).unwrap();
             let diag_score = diag + if reference[i-1] == query[j-1] { params.equal } else { params.mismatch };
-            //println!("[{},{}]: diag:{} + match({} == {})? = diag_score:{}", i, j, diag,
-            //         base_to_char(reference[i-1]), base_to_char(query[j-1]), diag_score );
 
             let (a,b) = {
                 if diag_score >= del_score && diag_score >= ins_score {
@@ -161,7 +159,7 @@ fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams ) ->
     println!("-- finished:\n");
     println!("{:?}\n", Matrix { width: m.width, height: m.height,
                                 data: m.data.iter().map( |c| Cell::unpack(&c).unwrap().1 ).collect() });
-
+    println!("best_loc: {},{}", best_loc.0, best_loc.1);
     Some((m, best_loc.0, best_loc.1))
 }
 
@@ -177,18 +175,22 @@ fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
     let ref_len : i32 = reference.len() as i32;
     let query_len : i32 = query.len() as i32;
 
-    let mut padded_ref : Vec<Mmer> = Vec::new();
-    let mut padded_query : Vec<Mmer> = Vec::new();
+    let mut padded_ref : Vec<Mmer> = Vec::with_capacity(reference.len());
+    let mut padded_query : Vec<Mmer> = Vec::with_capacity(query.len());
     let inc = *_inc;
     let mut i = *st_i;
     let mut j = *st_j;
 
-    while (i < ref_len && i > 1) || (j < query_len && j > 1) {
+    let max_i = if inc < 0 { ref_len + 1 } else { ref_len };
+    let max_j = if inc < 0 { query_len + 1 } else { query_len };
+
+    while (i < max_i && i > 1) || (j < max_j && j > 1) {
+        
         let (_, m_sc) = Cell::unpack( &alignment[ (i+inc, j+inc) ] ).unwrap();
         let (_, r_sc) = Cell::unpack( &alignment[ (i+inc, j) ] ).unwrap();
         let (_, d_sc) = Cell::unpack( &alignment[ (i, j+inc) ] ).unwrap();
 
-        if i < ref_len && j < query_len {
+        if i < max_i && i > 1 && j < max_j && j > 1 {
             if m_sc >= r_sc && m_sc >= d_sc {
                 i += inc;
                 j += inc;
@@ -204,6 +206,7 @@ fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
                 j += inc;
                 padded_ref.push(HYPHEN);
                 padded_query.push( query[j-1] );
+
             }
         } else if i < ref_len {
             i += inc;
@@ -224,14 +227,19 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams )
               -> Option<(Sequence, Sequence)> {
     match align_matrix( reference, query, params ) {
         Some( (m, st_i, st_j) ) => {
-            println!("st_i={}, st_j={}", st_i, st_j);
             let (fwd_r, fwd_q) = aln_from_coord( &st_i, &st_j, &1, &reference, &query, &m );
-            let (rev_r, rev_q) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
-            rev_r.reverse();
-            rev_q.reverse();
+            let (rev_r1, rev_q1) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
+            let mut rev_r2 = rev_r1.reverse().0;
+            if st_i <= reference.len() as i32 {
+                rev_r2.push( reference[st_i-1] );
+            }
 
-            println!("fwd_r={}, fwd_q={}, rev_r={}, rev_q={}", fwd_r, fwd_q, rev_r, rev_q);
-            Some( (rev_r + fwd_r, rev_q + fwd_q) ) }
+            let mut rev_q2 = rev_q1.reverse().0;
+            if st_j <= query.len() as i32 {
+                rev_q2.push( query[st_j-1] );
+            }
+            
+            Some( (Sequence(rev_r2) + fwd_r, Sequence(rev_q2) + fwd_q) ) },
 
         None => None
     }
