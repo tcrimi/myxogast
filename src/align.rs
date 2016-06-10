@@ -184,31 +184,19 @@ fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
     let max_i = if inc < 0 { ref_len + 1 } else { ref_len };
     let max_j = if inc < 0 { query_len + 1 } else { query_len };
 
-    while (i < max_i && i > 1) || (j < max_j && j > 1) {
-        
+    while i < max_i && i > 1 && j < max_j && j > 1 {
+
         let (_, m_sc) = Cell::unpack( &alignment[ (i+inc, j+inc) ] ).unwrap();
         let (_, r_sc) = Cell::unpack( &alignment[ (i+inc, j) ] ).unwrap();
         let (_, d_sc) = Cell::unpack( &alignment[ (i, j+inc) ] ).unwrap();
 
-        if i < max_i && i > 1 && j < max_j && j > 1 {
-            if m_sc >= r_sc && m_sc >= d_sc {
-                i += inc;
-                j += inc;
-                padded_ref.push( reference[i-1] );
-                padded_query.push( query[j-1] );
+        if m_sc >= r_sc && m_sc >= d_sc {
+            i += inc;
+            j += inc;
+            padded_ref.push( reference[i-1] );
+            padded_query.push( query[j-1] );
 
-            } else if r_sc >= m_sc && r_sc >= d_sc {
-                i += inc;
-                padded_ref.push( reference[i-1] );
-                padded_query.push(HYPHEN);
-
-            } else {
-                j += inc;
-                padded_ref.push(HYPHEN);
-                padded_query.push( query[j-1] );
-
-            }
-        } else if i < ref_len {
+        } else if r_sc >= m_sc && r_sc >= d_sc {
             i += inc;
             padded_ref.push( reference[i-1] );
             padded_query.push(HYPHEN);
@@ -217,9 +205,21 @@ fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
             j += inc;
             padded_ref.push(HYPHEN);
             padded_query.push( query[j-1] );
-
         }
     }
+
+    while i < ref_len && i > 1 {
+        i += inc;
+        padded_ref.push( reference[i-1] );
+        padded_query.push(HYPHEN);
+    }
+
+    while j < query_len && j > 1 {
+        j += inc;
+        padded_ref.push(HYPHEN);
+        padded_query.push( query[j-1] );
+    }
+
     (Sequence(padded_ref), Sequence(padded_query))
 }
 
