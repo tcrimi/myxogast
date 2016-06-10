@@ -1,5 +1,18 @@
 extern crate rustc_serialize;
 extern crate myxogast;
+extern crate bio;
+
+use std::io;
+use std::fs::File;
+use rustc_serialize::json;
+use std::ops::{Index,IndexMut};
+use std::clone::Clone;
+use std::fmt;
+use std::str;
+use std::fmt::Debug;
+use std::cmp::{PartialOrd,Ordering,max};
+
+use bio::io::fasta;
 
 use myxogast::align::*;
 use myxogast::tree::*;
@@ -7,12 +20,7 @@ use myxogast::seq::*;
 use myxogast::matrix::*;
 
 
-use rustc_serialize::json;
-use std::ops::{Index,IndexMut};
-use std::clone::Clone;
-use std::fmt;
-use std::fmt::Debug;
-use std::cmp::{PartialOrd,Ordering,max};
+
 
 
 
@@ -58,6 +66,27 @@ fn main() {
     let (r2, q2) = align( &ref2, &query2, &params ).unwrap();
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
+
+
+    // rust-bio
+    let reader = fasta::Reader::from_file("e_coli.fasta").unwrap();
+    for gene in reader.records() {
+        let seq = gene.unwrap();
+
+        // FIXME: ugh ..
+        let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
+
+        let e_coli = Sequence::from_str(seq_str.as_str()).unwrap();
+
+        let sub_ec = Sequence::from_str("CGAAGTGTTTGTGATTGGCGTCGGTGGCGTTGGCGGTGCGCTGCTGGAGCAACTGAA").unwrap();
+
+        let (ec_r, ec_q) = align( &e_coli, &sub_ec, &params ).unwrap();
+        println!("R: {}", ec_r);
+        println!("Q: {}", ec_q);
+
+        //let s2 = seq.to_vec();
+        //println!("{}", Sequence(s2));
+    }
 
     /*
     let x_scores = Matrix { width: x.width, height: x.height,
