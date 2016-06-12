@@ -9,6 +9,7 @@ Myxogast will be a network aligner based on the [classic dynamic programming](ht
  * HMM-style probabilities
 
 For example,
+```JSON
     [{"id":    "domain_1",
      "seq":    "*ATGCATGC"},
      {"id":    "domain_2",
@@ -18,4 +19,4 @@ For example,
                  "seq":  "TTATAG"}]
      },
      "TATTATA"]
-
+```
