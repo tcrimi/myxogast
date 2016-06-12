@@ -21,11 +21,6 @@ use myxogast::matrix::*;
 
 
 
-
-
-
-
-
 fn main() {
     let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
     println!("Hello World: {:?}", x );
@@ -68,6 +63,15 @@ fn main() {
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
 
+    let params_loc = AlnParams {
+        llocal:    true,
+        rlocal:    true,
+        max_indel: None,
+        gap_open:  -1,
+        gap_ext:   -1,
+        mismatch:  -1,
+        equal:     1 };
+
     // rust-bio
     let reader = fasta::Reader::from_file("e_coli.fasta").unwrap();
     for gene in reader.records() {
@@ -80,7 +84,7 @@ fn main() {
 
         let sub_ec = Sequence::from_str("CGAAGTGTTTGTGATTGGCGTCGGTGGCGTTGGCGGTGCGCTGCTGGAGCAACTGAA").unwrap();
 
-        let (ec_r, ec_q) = align( &e_coli, &sub_ec, &params ).unwrap();
+        let (ec_r, ec_q) = align( &e_coli, &sub_ec, &params_loc ).unwrap();
         println!("R: {}", ec_r);
         println!("Q: {}", ec_q);
 

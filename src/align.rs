@@ -1,6 +1,6 @@
 use std::fmt;
 use std::fmt::Debug;
-
+use std::cmp::min;
 use matrix::Matrix;
 use seq::*;
 
@@ -227,6 +227,15 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams )
               -> Option<(Sequence, Sequence)> {
     match align_matrix( reference, query, params ) {
         Some( (m, st_i, st_j) ) => {
+            println!("val @ max: {}", Cell::unpack( &m[(st_i as i32, st_j as i32)] ).unwrap().1 );
+            for j in 0 .. m.height {
+                let mut disp : Vec<i16> = Vec::with_capacity(m.width);
+                for i in 0 .. min( m.width, 45 ) {
+                    disp.push( Cell::unpack( &m[(i as i32, j as i32)] ).unwrap().1 );
+                }
+                println!("X: {:?}", disp);
+            }
+
             let (fwd_r, fwd_q) = aln_from_coord( &st_i, &st_j, &1, &reference, &query, &m );
             let (rev_r1, rev_q1) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
             let mut rev_r2 = rev_r1.reverse().0;
