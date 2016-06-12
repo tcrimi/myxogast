@@ -20,5 +20,17 @@ For example,
      },
      {"id":    "domain_3",
       "dist":  [{"A": 0.5, "T": 0.5}, {"A": 0.1, "T": 0.1, "G": 0.8}]},
-     "TATTATA"]
+     "TATTATA",
+
+     {"__META__": {"version": 0.1,
+                   "gap-penalty": -1}}]
 ```
+
+Currently, basic Needleman-Wunsch alignment works, but nothing else has been implemented.
+
+
+## TODO
+* JSON parsing
+* HMM/Viterbi alignmed
+* modify Cell to allocate more bits to the score
+* modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32)
