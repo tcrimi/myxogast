@@ -14,7 +14,7 @@ equivalent:
 ["ATGC","ATGC"]
 {"seq": ["ATGC","ATGC"]
 
-note that alignments are local by default; for a global alignment:
+note that alignments are global by default; for a local alignment:
 
 "*ATGCATGC*"
 
