@@ -34,7 +34,9 @@ fn main() {
     let r = Sequence::from_str("atgcn");
     println!("{:?}", r);
 
+    println!("testing AlnState::Ins, -10");
     assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Ins, &-10 ) ).unwrap(), (AlnState::Ins, -10) );
+    println!("testing Match, 222");
     assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Match, &222 ) ).unwrap(), (AlnState::Match, 222) );
 
     let params = AlnParams {
