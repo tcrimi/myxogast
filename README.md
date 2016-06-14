@@ -32,5 +32,5 @@ Currently, basic Needleman-Wunsch alignment works, but nothing else has been imp
 ## TODO
 * JSON parsing
 * HMM/Viterbi alignmed
-* modify Cell to allocate more bits to the score
 * modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32)
+* modify Cell to allocate more bits to the score [DONE - 28 bits up from 16]
