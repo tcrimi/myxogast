@@ -5,6 +5,9 @@ authors = ["kieran hervold <hervold@gmail.com>"]
 
 [dependencies]
 rustc-serialize = "*"
+serde = "*"
+serde_codegen = "*"
+serde_json = "*"
 
 [dependencies.bio]
 git = "http://github.com/rust-bio/rust-bio.git"

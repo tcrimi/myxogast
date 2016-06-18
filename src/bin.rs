@@ -2,9 +2,11 @@ extern crate rustc_serialize;
 extern crate myxogast;
 extern crate bio;
 
+
 use std::io;
 use std::fs::File;
 use rustc_serialize::json;
+use rustc_serialize::json::Json;
 use std::ops::{Index,IndexMut};
 use std::clone::Clone;
 use std::fmt;
@@ -24,7 +26,7 @@ use myxogast::matrix::*;
 fn main() {
     let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
     println!("Hello World: {:?}", x );
-    println!("{:?}", json::encode(&x));
+    println!("{:?}", x );//json::encode(&x));
     let mut y = Matrix::<u32>::new(0, 10, 10);
     y[(1,0)] = 5u32;
     println!("5 == {}?", y[(1,0)]);
@@ -64,7 +66,9 @@ fn main() {
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
+    println!("{:?}", SeqGraph::from_json(r#"{"id": "A", "seq": "ATGC"}"#).unwrap());
 
+    /*
     let params_loc = AlnParams {
         llocal:    true,
         rlocal:    true,
@@ -93,7 +97,10 @@ fn main() {
         //let s2 = seq.to_vec();
         //println!("{}", Sequence(s2));
     }
+     */
 
+    
+    
     /*
     let x_scores = Matrix { width: x.width, height: x.height,
                             data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
