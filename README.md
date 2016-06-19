@@ -8,7 +8,7 @@ Myxogast will be a network aligner based on the [classic dynamic programming](ht
  * branch points
  * HMM-style probabilities
 
-For example,
+For example, this is a valid graph-JSON reference:
 ```JSON
     [{"id":    "domain_1",
      "seq":    "*ATGCATGC"},
@@ -26,7 +26,29 @@ For example,
                    "gap-penalty": -1}}]
 ```
 
-Currently, basic Needleman-Wunsch alignment works, but nothing else has been implemented.
+Broadly, there are 3 node types: sequence fragments, branches, and probability distributions.  The simplest valid graph-JSON reference sequence is a simple JSON string, eg `"AGCTTTTCATTCTGACTGCAACGGGCAATATGTCTCTGTG"`, and represents a "fragment" node without an id.  Functionally, this is equivalent to `{"id": "BA000007.2", "seq": "AGCTTTTCATTCTGACTGCAACGGGCAATATGTCTCTGTG"}`.
+
+## Status
+Currently, basic Needleman-Wunsch alignment works, and the JSON parser can handle fragment and branch nodes.
+
+
+## Internals
+Reference sequence graphs are represented like so:
+```Rust
+enum SeqNode {
+    Frag { id: u32, val: Sequence },
+    Splat,
+    Dist { id: u32, scores: ProbMatr },
+    List { id: u32, members: Vec<SeqNode> },
+    Branch { id: u32, members: Vec<SeqNode> }
+}
+
+struct SeqGraph {
+    tree: SeqNode,
+    names: BTreeMap<u32, String>
+}
+```
+Nodes are identified by a unique u32 integer.  Names from the "id" field in the graph-JSON input are stored in a BTreeMap, and not with the nodes, because (1) names are optional, and (2) not guaranteed to be unique.
 
 
 ## TODO
