@@ -74,6 +74,7 @@ impl fmt::Debug for Cell {
 // used to store HMMer-style probabilities; dimensions: BASE-COUNT x REF-LENGTH
 pub type ProbMatr = Matrix<f32>;
 
+#[derive(Clone, Debug)]
 pub struct AlnParams {
     pub llocal:     bool,        // global or local on the left?
     pub rlocal:     bool,        // global or local on the right?
@@ -96,6 +97,17 @@ impl AlnParams {
             mismatch:   _mismatch,
             equal:      match _equal { Some(g) => g, None => 1 }, // "match" is a keyword
         }
+    }
+    pub fn copy_but_llocal(tgt: &AlnParams, ll: bool ) -> AlnParams {
+                AlnParams {
+                    llocal:     ll,
+                    rlocal:     tgt.rlocal,
+                    max_indel:  tgt.max_indel,
+                    gap_open:   tgt.gap_open,
+                    gap_ext:    tgt.gap_ext,
+                    mismatch:   tgt.mismatch,
+                    equal:      tgt.equal
+                }
     }
 }
 
@@ -129,9 +141,11 @@ impl Eq for AlnState {}
 /// returns Option(m, i, j), where m is the alignment matrix, and i,j is the
 ///   the location of the cell with the highest value
 ///
-fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams ) -> Option<(Matrix<Cell>, i32, i32)> {
-    let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
+pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams, _ref_start: Option<i32>,
+                 m: &mut Matrix<Cell> ) -> Option<(i32, i32)> {
+
     let ref_len : i32 = reference.len() as i32;
+    let ref_start = match _ref_start { Some(x) => x, None => 1i32 };
     let query_len : i32 = query.len() as i32;
 
     let mut best_val : AlnScore = AlnScore::min_value();
@@ -143,7 +157,7 @@ fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams ) ->
     }
     for j in 0i16 .. (query_len + 1) as i16 { m[ (0, j as i32) ] = Cell::pack( &AlnState::Nil, &(-j as AlnScore)); }
 
-    for i in 1 .. ref_len + 1 {
+    for i in ref_start .. ref_len + 1 {
         for j in 1 .. query_len + 1 {
 
             let (dstate, del) = Cell::unpack( &m[ (i-1, j) ] ).unwrap();
@@ -176,9 +190,7 @@ fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams ) ->
             m[ (i, j) ] = Cell::pack( &a, &b );
         }
     };
-
-    println!("best_loc: {},{}", best_loc.0, best_loc.1);
-    Some((m, best_loc.0, best_loc.1))
+    Some((best_loc.0, best_loc.1))
 }
 
 pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> Option<()> {
@@ -243,19 +255,10 @@ fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
 
 pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams )
               -> Option<(Sequence, Sequence)> {
-    match align_matrix( reference, query, params ) {
-        Some( (m, st_i, st_j) ) => {
-            /*
-            println!("val @ max: {}", Cell::unpack( &m[(st_i as i32, st_j as i32)] ).unwrap().1 );
-            for j in 0 .. m.height {
-                let mut disp : Vec<AlnScore> = Vec::with_capacity(m.width);
-                for i in 0 .. min( m.width, 45 ) {
-                    disp.push( Cell::unpack( &m[(i as i32, j as i32)] ).unwrap().1 );
-                }
-                println!("X: {:?}", disp);
-            }
-             */
- 
+    let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
+
+    match align_matrix( reference, query, &params, None, &mut m ) {
+        Some( (st_i, st_j) ) => { 
             let (fwd_r, fwd_q) = aln_from_coord( &st_i, &st_j, &1, &reference, &query, &m );
             let (rev_r1, rev_q1) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
             let mut rev_r2 = rev_r1.reverse().0;

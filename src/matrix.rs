@@ -3,12 +3,13 @@ use std::fmt::Debug;
 use std::ops::{Index,IndexMut};
 
 
-#[derive(RustcDecodable,RustcEncodable)]
+#[derive(Clone,RustcDecodable,RustcEncodable)]
 pub struct Matrix<T> {
     pub width:   usize,
     pub height:  usize,
     pub data :   Vec<T>,
 }
+
 
 impl<T:Clone> Matrix<T> {
     pub fn new( init: T, w: usize, h: usize ) -> Matrix<T> {
