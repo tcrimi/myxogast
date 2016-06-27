@@ -225,7 +225,9 @@ impl SeqGraph {
         let (ref_len, _) = self.longest_path();
         let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
 
-        SeqGraph::_align_by_path( &self.root, query, &mut m, &base_params, 0, path, 0 );
+        println!("ref_len: {}", ref_len);
+        let (len, score) = SeqGraph::_align_by_path( &self.root, query, &mut m, &base_params, 0, path, 0 );
+        println!("len: {}, score: {}", len, score);
         None
     }
 }

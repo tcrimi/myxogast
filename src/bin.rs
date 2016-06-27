@@ -66,12 +66,11 @@ fn main() {
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
-    println!("{:?}", SeqGraph::from_json(r#"{"id": "A", "seq": "ATGC"}"#).unwrap());
+    let graph = SeqGraph::from_json(r#"{"id": "A", "seq": "ATGC"}"#).unwrap();
+    println!("{:?}", graph);
+    graph.align( &query2, &vec![0], &params );
+    
 
-
-    let mut l = vec![0,0];
-    l[2] = 10;
-    println!("{:?}", l);
     /*
     let params_loc = AlnParams {
         llocal:    true,
