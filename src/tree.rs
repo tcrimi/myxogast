@@ -34,7 +34,7 @@ pub struct SeqGraph {
 impl SeqNode {
     fn read_item( idx: u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val ) -> Result<SeqNode, SeqErr> {
         match elem {
-            &JSON_Val::String(ref s) => Ok(SeqNode::Frag{id: 0, val: Sequence::from_str(&s).unwrap() }),
+            &JSON_Val::String(ref s) => Ok(SeqNode::Frag{id: idx, val: Sequence::from_str(&s).unwrap() }),
             &JSON_Val::Object(ref obj) => SeqNode::read_btree( idx, names, &obj ),
             _ => Err(SeqErr::BadJsonElement)
         }
@@ -42,8 +42,10 @@ impl SeqNode {
 
     fn read_list( idx: u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val ) -> Result<Vec<SeqNode>, SeqErr> {
         match elem {
-            &JSON_Val::Array(ref l) => 
-                Ok( l.iter().map( |x| SeqNode::read_item(idx, names, x).unwrap() ).collect() ),
+            &JSON_Val::Array(ref l) =>
+                Ok( l.iter().enumerate()
+                    .map( |(i, x)| SeqNode::read_item( idx + 1 + i as u32, names, x).unwrap() )
+                    .collect() ),
             _ => Err(SeqErr::BadJsonElement)
         }
     }
@@ -73,7 +75,7 @@ impl SeqNode {
             if map.contains_key("dist") {
                 Err(SeqErr::Ambiguous)
             } else {
-                let v = try!{ SeqNode::read_list(idx, names, &map.get("branch").unwrap()) };
+                let v = try!{ SeqNode::read_list(idx+1, names, &map.get("branch").unwrap()) };
                 Ok( SeqNode::Branch { id: idx, members: v })
             }
         } else if map.contains_key("dist") {
@@ -161,6 +163,17 @@ impl SeqGraph {
 
     fn _align_by_path( node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>, base_params: &AlnParams,
                        start: i32, path: &Vec<u32>, pos: usize ) -> (i32, i32) {
+
+        println!("path: {:?}, pos: {}, expected id: {}, id: {:?}", path, pos, path[pos], node.iden());
+        println!("matrix:\n{:?}", m);
+     
+        match node.iden() {
+            Some(id) => assert_eq!( id, path[pos] ),
+            None => ()
+        }
+
+        assert!( pos < path.len(), "passed end of path");
+ 
         match node {
             &SeqNode::Frag{ id: ref id, val: ref val } => {
                 // ALIGNMENT HAPPENS HERE
@@ -193,11 +206,11 @@ impl SeqGraph {
                 let mut offset = 0i32;
                 let mut params : AlnParams = base_params.clone();
                 let mut last_score = -1i32;
-                for n in members {
+                for (i, n) in members.iter().enumerate() {
                     match n {
                         &SeqNode::Frag{..} => {
                             let (f_len, last_score) = SeqGraph::_align_by_path( n, query, m, &params, start,
-                                                                                path, pos+1 );
+                                                                                path, pos + 1 + i );
                             offset += f_len;
                             params = AlnParams::copy_but_llocal( &params, false );
                         },
@@ -206,7 +219,7 @@ impl SeqGraph {
                         },
                         &SeqNode::Branch{..} => {
                             let (f_len, last_score) = SeqGraph::_align_by_path( n, query, m, &params, start,
-                                                                                path, pos+1 );
+                                                                                path, pos + 1 + i );
                             offset += f_len;
                             params = AlnParams::copy_but_llocal( &params, false );
                         },
