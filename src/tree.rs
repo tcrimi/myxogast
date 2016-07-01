@@ -32,31 +32,39 @@ pub struct SeqGraph {
 }
 
 impl SeqNode {
-    fn read_item( idx: u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val ) -> Result<SeqNode, SeqErr> {
-        match elem {
-            &JSON_Val::String(ref s) => Ok(SeqNode::Frag{id: idx, val: Sequence::from_str(&s).unwrap() }),
+    fn read_item( idx: &mut u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val )
+                   -> Result<SeqNode, SeqErr> {
+        let ret = match elem {
+            &JSON_Val::String(ref s) => Ok(SeqNode::Frag{id: *idx, val: Sequence::from_str(&s).unwrap() }),
             &JSON_Val::Object(ref obj) => SeqNode::read_btree( idx, names, &obj ),
             _ => Err(SeqErr::BadJsonElement)
-        }
+        };
+        *idx += 1;
+        ret
     }
 
-    fn read_list( idx: u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val ) -> Result<Vec<SeqNode>, SeqErr> {
+    fn read_list( idx: &mut u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val )
+                   -> Result<Vec<SeqNode>, SeqErr> {
         match elem {
-            &JSON_Val::Array(ref l) =>
-                Ok( l.iter().enumerate()
-                    .map( |(i, x)| SeqNode::read_item( idx + 1 + i as u32, names, x).unwrap() )
-                    .collect() ),
+            &JSON_Val::Array(ref l) => {
+                let mut ret = Vec::new();
+                for (i, x) in l.iter().enumerate() {
+                    ret.push( SeqNode::read_item( idx, names, x ).unwrap() );
+                    *idx += 1;
+                };
+                Ok(ret)
+            },
             _ => Err(SeqErr::BadJsonElement)
         }
     }
 
-    fn read_btree( idx : u32, names : &mut BTreeMap<u32, String>, map : &BTreeMap<String, JSON_Val>)
+    fn read_btree( idx: &mut u32, names : &mut BTreeMap<u32, String>, map : &BTreeMap<String, JSON_Val>)
                    -> Result<SeqNode, SeqErr> {
 
         let _ = match map.get("id") {
             Some(s) => {
                 match s {
-                    &JSON_Val::String(ref s2) => { names.insert(idx, s2.clone()); () },
+                    &JSON_Val::String(ref s2) => { names.insert(*idx, s2.clone()); () },
                     _ => return Err(SeqErr::StringExpected)
                 }},
             None => ()
@@ -67,7 +75,10 @@ impl SeqNode {
                 Err(SeqErr::Ambiguous)
             } else {
                 match map.get("seq").unwrap() {
-                    &JSON_Val::String(ref s2) => Ok( SeqNode::Frag { id: idx, val: Sequence::from_str(&s2).unwrap()}),
+                    &JSON_Val::String(ref s2) => {
+                        let ret = SeqNode::Frag { id: *idx, val: Sequence::from_str(&s2).unwrap()};
+                        *idx += 1;
+                        Ok(ret) },
                     _ => Err(SeqErr::StringExpected)
                 }
             }
@@ -75,9 +86,10 @@ impl SeqNode {
             if map.contains_key("dist") {
                 Err(SeqErr::Ambiguous)
             } else {
-                let v = try!{ SeqNode::read_list(idx+1, names, &map.get("branch").unwrap()) };
-                Ok( SeqNode::Branch { id: idx, members: v })
-            }
+                let v = try!{ SeqNode::read_list( idx, names, &map.get("branch").unwrap()) };
+                let ret = SeqNode::Branch { id: *idx+1, members: v };
+                *idx += 2;
+                Ok(ret) }
         } else if map.contains_key("dist") {
             Err(SeqErr::Unsupported)
         } else {
@@ -101,13 +113,14 @@ impl SeqGraph {
         let mut idx = 0;
         
         let value = serde_json::from_str(serialized).unwrap();
+        let mut idx = 0u32;
         let tree = try!{
             match value {
                 JSON_Val::Array(_) => {
-                    let l = try!{ SeqNode::read_list(0, &mut names, &value) };
+                    let l = try!{ SeqNode::read_list(&mut idx, &mut names, &value) };
                     Ok( SeqNode::List{ id: idx, members: l })
                 },
-                _ => SeqNode::read_item(0, &mut names, &value)
+                _ => SeqNode::read_item(&mut idx, &mut names, &value)
             }
         };
         Ok( SeqGraph { root: tree, names: names } )
@@ -162,7 +175,7 @@ impl SeqGraph {
     }
 
     fn _align_by_path( node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>, base_params: &AlnParams,
-                       start: i32, path: &Vec<u32>, pos: usize ) -> (i32, i32) {
+                       start: i32, path: &Vec<u32>, pos: usize ) -> (/*offset*/ i32, /*score*/ i32) {
 
         println!("path: {:?}, pos: {}, expected id: {}, id: {:?}", path, pos, path[pos], node.iden());
         println!("matrix:\n{:?}", m);
@@ -234,13 +247,98 @@ impl SeqGraph {
     }
 
     pub fn align(&self, query: &Sequence, path: &Vec<u32>, base_params: &AlnParams)
-                 -> Option<(Sequence, Sequence)> {
+                 -> Option<(/*padded_ref*/ Sequence, /*padded_query*/ Sequence)> {
         let (ref_len, _) = self.longest_path();
         let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
 
         println!("ref_len: {}", ref_len);
         let (len, score) = SeqGraph::_align_by_path( &self.root, query, &mut m, &base_params, 0, path, 0 );
         println!("len: {}, score: {}", len, score);
+        None
+    }
+
+    /// find the "local maxima" path -- ie, traverse the graph, trying each option at each branch point
+    ///  to find the best path, without worrying about combinitorics
+    fn _local_max( node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>, base_params: &AlnParams,
+                   start: i32, path: &mut Vec<u32> )
+                   -> (/*offset*/ i32, /*score*/ i32) {
+        println!("node: {:?}, query: {}, start: {}, path: {:?}\n", node, query, start, path);
+
+        match node {
+            &SeqNode::Frag{ id: ref id, val: ref val } => {
+                path.push( *id );
+                let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
+                (start + val.len() as i32, Cell::unpack(&m[t]).unwrap().1)
+            }
+
+            &SeqNode::Branch { id: ref id, members: ref members } => {
+                path.push( *id );
+
+                // our vec @path gets a little tricky here, as subsequent recursive calls
+                //   will extend it, and we only want to choose one of the possible extensions.
+                //   the solution is to keep a copy of the best path, and truncate the working
+                //   vec to its original state each time
+                //
+                let len_before = path.len();
+                let mut best_path : Vec<u32> = Vec::new();
+                let mut best_x = -1;
+                let mut best_id = 0;
+                let mut best_score = i32::min_value();
+
+                for n in members {
+                    match n.iden() {
+                        Some(nid) => {
+                            println!("branch trying id={}", nid);
+
+                            let (next_x, next_score) = SeqGraph::_local_max( n, query, m, base_params,
+                                                                             start, path );
+                            if next_score > best_score {
+                                println!("id {} score={} > old score {}", nid, next_score, best_score);
+                                best_path = path.to_owned();
+
+                                best_id = nid;
+                                best_score = next_score;
+                            }
+
+                            path.truncate(len_before);
+                        },
+                        None => {},
+                    }
+                }
+                path.extend( best_path[len_before..].iter().cloned() );
+                println!("after branch, path={:?}", path);
+                (best_x, best_score)
+            },
+
+            &SeqNode::List { id: ref id, members: ref members } => {
+                path.push( *id );
+
+                let mut acc = 0i32;
+                let mut score = -1;
+                for n in members {
+                    match n.iden() {
+                        Some(nid) => {
+                            println!("list iter on id {}", nid);
+
+                            let (len, score) = SeqGraph::_local_max( n, query, m, base_params, start+acc, path );
+                            acc += len;
+                        },
+                        None => {}
+                    };
+                }
+                (acc, score)
+            },
+
+            &SeqNode::Splat => SeqGraph::_local_max( node, query, m, base_params, start, path )
+        }
+    }
+
+    pub fn local_max(&self, query: &Sequence, base_params: &AlnParams ) -> Option<(Sequence, Sequence)> {
+        let (ref_len, _) = self.longest_path();
+        let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
+        let mut v = Vec::new();
+        SeqGraph::_local_max( &self.root, query, &mut m, base_params, 0, &mut v );
+        println!("-- finished - path={:?}", v);
         None
     }
 }

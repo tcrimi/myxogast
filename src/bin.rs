@@ -66,10 +66,11 @@ fn main() {
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
-    let graph = SeqGraph::from_json(r#"[{"id": "A", "seq": "ATGC"},{"branch": ["ATTT","GCCC"]}]"#).unwrap();
+    let graph = SeqGraph::from_json(r#"[{"id": "A", "seq": "ATGC"}, {"branch": ["ATTT","GCCC"]}, "ATTT"]"#).unwrap();
     println!("{:?}", graph);
-    graph.align( &query2, &vec![0,1,2,4], &params );
-
+    //graph.align( &query2, &vec![0,1,2,4], &params );
+    graph.local_max( &Sequence::from_str("ATGCGCCCATTT").unwrap(), &params );
+    
     /*
     let params_loc = AlnParams {
         llocal:    true,

@@ -142,7 +142,7 @@ impl Eq for AlnState {}
 ///   the location of the cell with the highest value
 ///
 pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams, _ref_start: Option<i32>,
-                 m: &mut Matrix<Cell> ) -> Option<(i32, i32)> {
+                 m: &mut Matrix<Cell> ) -> Option<(/*x*/ i32, /*y*/i32)> {
 
     let ref_len : i32 = reference.len() as i32;
     let ref_start = match _ref_start { Some(x) => x, None => 1i32 };

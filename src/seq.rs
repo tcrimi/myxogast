@@ -8,7 +8,7 @@ use std::ops::RangeTo;
 pub type Mmer = u8;
 pub const HYPHEN : Mmer = 4;
 
-#[derive(Debug,Clone,RustcDecodable,RustcEncodable)]
+#[derive(Clone,RustcDecodable,RustcEncodable)]
 pub struct Sequence( pub Vec<Mmer> );
 
 pub fn base_to_char( ch : Mmer ) -> char {
@@ -71,6 +71,13 @@ impl fmt::Display for Sequence {
         write!(f, "{}", Sequence::mmer_to_str( &self.0[..] ))
     }
 }
+
+impl fmt::Debug for Sequence {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", Sequence::mmer_to_str( &self.0[..] ))
+    }
+}
+
 
 impl Index<i32> for Sequence {
     type Output = Mmer;
