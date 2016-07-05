@@ -59,7 +59,7 @@ pub enum SeqErr {
 
 impl SeqNode {
 
-    fn dispatch( idx: &mut u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val, next: SeqNode )
+    fn dispatch( idx: &mut u32, names : &mut BTreeMap<u32, String>, elem: &JSON_Val, next: Rc<SeqNode> )
                  -> Result<SeqNode, SeqErr> {
         *idx += 1;
 
@@ -76,7 +76,7 @@ impl SeqNode {
         Ok(SeqNode::Frag{ id: *idx, val: Sequence::from_str(&s).unwrap(),
                           llocal: false,
                           rlocal: false,
-                          next: Rc::new(next) })
+                          next: next.clone() })
     }
 
     fn read_list( idx: &mut u32, names : &mut BTreeMap<u32, String>, l: &Vec<JSON_Val>, pos: usize )
@@ -84,7 +84,7 @@ impl SeqNode {
         *idx += 1;
         if pos < l.len() {
             let next = SeqNode::read_list( idx, names, l, pos+1 ).unwrap();
-            SeqNode::dispatch( idx, names, &l[pos], next )
+            SeqNode::dispatch( idx, names, &l[pos], Rc::new(next) )
         } else {
             Ok( SeqNode::Nil )
         }
@@ -123,7 +123,7 @@ impl SeqNode {
                         let l : &Vec<JSON_Val> = _l;
                         let mut m = Vec::new();
                         for x in l {
-                            m.push( SeqNode::dispatch( idx, names, x, next ).unwrap());
+                            m.push( SeqNode::dispatch( idx, names, x, next.clone() ).unwrap());
                         }
                         Ok(m)
                         //Ok( l.iter().map(|x| SeqNode::dispatch( idx, names, x, next ).unwrap() ).collect() )
@@ -155,7 +155,7 @@ impl SeqGraph {
         
         let value = serde_json::from_str(serialized).unwrap();
         let mut idx = 0u32;
-        let tree = SeqNode::dispatch( &mut idx, &mut names, &value, SeqNode::Nil ).unwrap();
+        let tree = SeqNode::dispatch( &mut idx, &mut names, &value, Rc::new(SeqNode::Nil) ).unwrap();
         Ok( SeqGraph { root: tree, names: names } )
     }
 }
