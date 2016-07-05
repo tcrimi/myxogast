@@ -40,8 +40,8 @@ pub struct SeqGraph {
 }
 
 #[derive(Debug)]
-pub struct GraphPath {
-    curr_node: &SeqNode,
+pub struct GraphPath<'a> {
+    curr_node: &'a SeqNode,
     path: Vec<u32>,
     pos: usize
 }
@@ -159,26 +159,26 @@ impl SeqGraph {
     }
 }
 
-impl GraphPath {
-    pub fn from_graph(graph: &SeqGraph, path: Vec<u32>) -> GraphPath {
+impl<'a> GraphPath<'a> {
+    pub fn from_graph(graph: &'a SeqGraph, path: Vec<u32>) -> GraphPath {
         GraphPath {
-            curr_node: graph.root,
+            curr_node: &graph.root,
             path: path,
             pos: 0
         }
     }
 
-    fn _next(&mut self) -> Option<&Sequence> {
+    fn _next(&mut self) -> Option<Sequence> {
         if self.pos < self.path.len() {
             assert_eq!( self.path[self.pos], self.curr_node.iden().unwrap() );
             self.pos += 1;
 
             match self.curr_node {
-                SeqNode::Frag { val: ref val, next: ref next, ..} => {
+                &SeqNode::Frag { val: ref val, next: ref next, ..} => {
                     self.curr_node = next;
-                    Some(val)
+                    Some(val.clone())
                 },
-                SeqNode::Branch { members: ref members, ..} => {
+                &SeqNode::Branch { members: ref members, ..} => {
                     for n in members {
                         if n.iden().unwrap() == self.path[self.pos] {
                             self.curr_node = n;
@@ -187,7 +187,7 @@ impl GraphPath {
                     }
                     None
                 },
-                SeqNode::Nil => None
+                &SeqNode::Nil => None
             }
         } else {
             None
@@ -195,7 +195,7 @@ impl GraphPath {
     }
 }
 
-impl Iterator for GraphPath {
+impl<'a> Iterator for GraphPath<'a> {
     type Item = Sequence;
 
     fn next(&mut self) -> Option<Sequence> {
