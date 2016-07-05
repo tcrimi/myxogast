@@ -8,6 +8,7 @@ use seq::*;
 use align::*;
 use matrix::*;
 use std::iter::Iterator;
+use std::rc::Rc;
 
 
 #[derive(Debug, Clone)]
@@ -20,7 +21,7 @@ pub enum SeqNode {
         llocal: bool,
         rlocal: bool,
 
-        next: Box<SeqNode>
+        next: Rc<SeqNode>
     },
 
     //Dist { id: u32, scores: ProbMatr },
@@ -70,12 +71,12 @@ impl SeqNode {
         }
     }
 
-    fn read_str( idx: &mut u32, names : &mut BTreeMap<u32, String>, s: &String, next: SeqNode )
+    fn read_str( idx: &mut u32, names : &mut BTreeMap<u32, String>, s: &String, next: Rc<SeqNode> )
                  -> Result<SeqNode, SeqErr> {
         Ok(SeqNode::Frag{ id: *idx, val: Sequence::from_str(&s).unwrap(),
                           llocal: false,
                           rlocal: false,
-                          next: Box::new(next) })
+                          next: Rc::new(next) })
     }
 
     fn read_list( idx: &mut u32, names : &mut BTreeMap<u32, String>, l: &Vec<JSON_Val>, pos: usize )
@@ -89,7 +90,7 @@ impl SeqNode {
         }
     }
 
-    fn read_obj( idx: &mut u32, names: &mut BTreeMap<u32, String>, map: &BTreeMap<String, JSON_Val>, next: SeqNode )
+    fn read_obj( idx: &mut u32, names: &mut BTreeMap<u32, String>, map: &BTreeMap<String, JSON_Val>, next: Rc<SeqNode> )
                  -> Result<SeqNode, SeqErr> {
 
         let _ = match map.get("id") {
@@ -108,7 +109,7 @@ impl SeqNode {
                 match map.get("seq").unwrap() {
                     &JSON_Val::String(ref s2) => {
                         Ok( SeqNode::Frag { id: *idx, val: Sequence::from_str(&s2).unwrap(),
-                                            llocal: false, rlocal: false, next: Box::new(next) } )
+                                            llocal: false, rlocal: false, next: next.clone() } )
                     },
                     _ => Err(SeqErr::BadJsonElement)
                 }
