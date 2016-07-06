@@ -158,6 +158,21 @@ impl SeqGraph {
         let tree = SeqNode::dispatch( &mut idx, &mut names, &value, Rc::new(SeqNode::Nil) ).unwrap();
         Ok( SeqGraph { root: tree, names: names } )
     }
+
+    fn _max_len(n: &SeqNode) -> usize {
+        match n {
+            &SeqNode::Nil => 0,
+            &SeqNode::Frag { val: ref val, next: ref next, ..} => { val.len() + SeqGraph::_longest_path(next) },
+            &SeqNode::Branch { members: ref members, ..} => { members.iter()
+                                                              .map( |n| SeqGraph::_longest_path(n) )
+                                                              .max()
+                                                              .unwrap() }
+        }
+    }
+    /// max_len - the maximum sequence length encoded by this graph
+    pub fn max_len(&self) -> usize {
+        SeqGraph::_longest_path( &self.root )
+    }
 }
 
 impl<'a> GraphPath<'a> {
