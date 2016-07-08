@@ -24,12 +24,6 @@ use myxogast::matrix::*;
 
 
 fn main() {
-    let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
-    println!("Hello World: {:?}", x );
-    println!("{:?}", x );//json::encode(&x));
-    let mut y = Matrix::<u32>::new(0, 10, 10);
-    y[(1,0)] = 5u32;
-    println!("5 == {}?", y[(1,0)]);
 
     let q = Sequence::from_str("atgc");
     println!("{:?}", q);
@@ -66,10 +60,13 @@ fn main() {
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
-    let graph = SeqGraph::from_json(r#"[{"id": "A", "seq": "ATGC"}, {"branch": ["ATTT","GCCC"]}, "ATTT"]"#).unwrap();
+    //let graph = SeqGraph::from_json(r#"[{"id": "A", "seq": "ATGC"}, {"branch": ["ATTT","GCCC"]}, "ATTT"]"#).unwrap();
+    let graph = SeqGraph::from_json(r#"["ATGC",{"branch": ["GGCC","TTAAAAAAAAT"]}]"#).unwrap();
     println!("{:?}", graph);
+    println!("aln?? {:?}", graph.align__global_max( &Sequence::from_str("AGGCTTAAAA").unwrap(), &params ));
+
     //graph.align( &query2, &vec![0,1,2,4], &params );
-    graph.local_max( &Sequence::from_str("ATGCGCCCATTT").unwrap(), &params );
+    //graph.local_max( &Sequence::from_str("ATGCGCCCATTT").unwrap(), &params );
     
     /*
     let params_loc = AlnParams {

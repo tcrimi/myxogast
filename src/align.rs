@@ -17,7 +17,7 @@ const SCOREBITS : usize = 28;
 /// previous max in the cell, however, we need it to implement separate gap-opening
 /// and gap-extension penalties
 ///
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Cell(pub u32);
 
 impl Cell {
@@ -198,7 +198,7 @@ pub fn align_hmm( reference: ProbMatr, query: Sequence, params: AlnParams ) -> O
     None
 }
 
-fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
+pub fn aln_from_coord( st_i : &i32, st_j : &i32, _inc : &i32, reference : &Sequence,
                    query : &Sequence, alignment : &Matrix<Cell> )
                    -> (Sequence, Sequence) {
 

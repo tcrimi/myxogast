@@ -52,7 +52,7 @@ Nodes are identified by a unique u32 integer.  Names from the "id" field in the 
 
 
 ## TODO
-* JSON parsing
+* move Splat out of SeqNode, and make it an attribute of the other types
 * HMM/Viterbi alignmed
-* modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32)
-* modify Cell to allocate more bits to the score [DONE - 28 bits up from 16]
+* modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32) (?? is this worth the effort?)
+

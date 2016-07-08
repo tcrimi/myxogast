@@ -40,6 +40,7 @@ pub struct SeqGraph {
     names: BTreeMap<u32, String>
 }
 
+/// GraphPath - used for Iterator trait on SeqGraph
 #[derive(Debug)]
 pub struct GraphPath<'a> {
     curr_node: &'a SeqNode,
@@ -123,6 +124,7 @@ impl SeqNode {
                         let l : &Vec<JSON_Val> = _l;
                         let mut m = Vec::new();
                         for x in l {
+                            *idx += 1;
                             m.push( SeqNode::dispatch( idx, names, x, next.clone() ).unwrap());
                         }
                         Ok(m)
@@ -130,6 +132,7 @@ impl SeqNode {
                     },
                     _ => Err(SeqErr::BadJsonElement)
                 }.unwrap();
+                *idx += 1;
                 Ok( SeqNode::Branch { id: *idx, members: members, llocal: false, rlocal: false } )
             }
         } else if map.contains_key("dist") {
@@ -162,16 +165,91 @@ impl SeqGraph {
     fn _max_len(n: &SeqNode) -> usize {
         match n {
             &SeqNode::Nil => 0,
-            &SeqNode::Frag { val: ref val, next: ref next, ..} => { val.len() + SeqGraph::_longest_path(next) },
+            &SeqNode::Frag { val: ref val, next: ref next, ..} => { val.len() + SeqGraph::_max_len(next) },
             &SeqNode::Branch { members: ref members, ..} => { members.iter()
-                                                              .map( |n| SeqGraph::_longest_path(n) )
+                                                              .map( |n| SeqGraph::_max_len(n) )
                                                               .max()
                                                               .unwrap() }
         }
     }
     /// max_len - the maximum sequence length encoded by this graph
     pub fn max_len(&self) -> usize {
-        SeqGraph::_longest_path( &self.root )
+        SeqGraph::_max_len( &self.root )
+    }
+
+
+    fn _align__global_max(node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>,
+                          base_params: &AlnParams, start: i32, path: &mut Vec<u32>, pos: usize )
+                          -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
+        match node {
+            &SeqNode::Nil => Some((0, path.clone())),
+            &SeqNode::Frag { id: ref id, val: ref val, next: ref next, ..} => {
+                path.push( id.clone() );
+
+                let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
+                let score = Cell::unpack(&m[t]).unwrap().1;
+                let (next_score, _) = SeqGraph::_align__global_max( next, query, m, base_params,
+                                                                    start + val.len() as i32, path,
+                                                                    pos + 1 )
+                    .unwrap();
+                Some((score + next_score, path.to_vec()))
+            },
+            &SeqNode::Branch { members: ref members, ..} => {
+                path.push( node.iden().unwrap() );
+
+                let mut best_node = &SeqNode::Nil;
+                let mut best_score = i32::min_value();
+                let mut best_path = Vec::new();
+
+                for n in members {
+                    path.truncate( pos + 1 );
+                    let (next_score, _) = SeqGraph::_align__global_max( n, query, m, base_params,
+                                                                        start, path, pos + 1 )
+                        .unwrap();
+                    if next_score > best_score {
+                        best_score = next_score;
+                        best_node = &n;
+                        best_path = path.to_vec();
+                    }
+                }
+                best_path.push( best_node.iden().unwrap() );
+                Some((best_score, best_path.to_vec()))
+            }
+        }
+    }
+    /// SeqGraph::align__global_max -- align query to graph, testing every possible branch to
+    ///   find the global maximum.
+    pub fn align__global_max(&self, query: &Sequence, base_params: &AlnParams )
+                            -> Option<(/*path*/ Vec<u32>, /*padded_ref*/ Sequence, /*padded_query*/ Sequence)> {
+        let mut _path = Vec::new();
+        let ref_len = self.max_len();
+        let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
+        match SeqGraph::_align__global_max( &self.root, query,  &mut m, base_params, 0,
+                                             &mut _path, 0) {
+            Some((score, path)) => {
+                println!("align__global_max -> {:?}", (score,&path) );
+                let mut full_ref_v = Vec::new();
+                for s in GraphPath::from_graph( self, path.to_vec() ) {
+                    full_ref_v.extend( s.0 );
+                }
+                let full_ref = Sequence(full_ref_v);
+                let (_, t) = m.max();
+
+                let (fwd_r, fwd_q) = aln_from_coord( &t.0, &t.1, &1, &full_ref, &query, &m );
+                let (rev_r1, rev_q1) = aln_from_coord( &t.0, &t.1, &(-1), &full_ref, &query, &m );
+                let mut rev_r2 = rev_r1.reverse().0;
+                if t.0 <= full_ref.len() as i32 {
+                    rev_r2.push( full_ref[t.0-1] );
+                }
+
+                let mut rev_q2 = rev_q1.reverse().0;
+                if t.1 <= query.len() as i32 {
+                    rev_q2.push( query[t.1-1] );
+                }
+                Some((path, Sequence(rev_r2) + fwd_r, Sequence(rev_q2) + fwd_q))
+            },
+            None => None
+        }
     }
 }
 
@@ -187,21 +265,24 @@ impl<'a> GraphPath<'a> {
     fn _next(&mut self) -> Option<Sequence> {
         if self.pos < self.path.len() {
             assert_eq!( self.path[self.pos], self.curr_node.iden().unwrap() );
-            self.pos += 1;
 
             match self.curr_node {
                 &SeqNode::Frag { val: ref val, next: ref next, ..} => {
+                    println!("found frag: {:?}", val);
+                    self.pos += 1;
                     self.curr_node = next;
                     Some(val.clone())
                 },
                 &SeqNode::Branch { members: ref members, ..} => {
+                    assert_eq!( self.curr_node.iden(), Some(self.path[self.pos]) );
+                    self.pos += 1;
                     for n in members {
-                        if n.iden().unwrap() == self.path[self.pos] {
+                        if n.iden() == Some(self.path[self.pos]) {
                             self.curr_node = n;
                             return self._next()
                         }
                     }
-                    None
+                    panic!("couldn't find thing");
                 },
                 &SeqNode::Nil => None
             }
