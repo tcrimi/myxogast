@@ -233,20 +233,10 @@ impl SeqGraph {
                     full_ref_v.extend( s.0 );
                 }
                 let full_ref = Sequence(full_ref_v);
-                let (_, t) = m.max();
 
-                let (fwd_r, fwd_q) = aln_from_coord( &t.0, &t.1, &1, &full_ref, &query, &m );
-                let (rev_r1, rev_q1) = aln_from_coord( &t.0, &t.1, &(-1), &full_ref, &query, &m );
-                let mut rev_r2 = rev_r1.reverse().0;
-                if t.0 <= full_ref.len() as i32 {
-                    rev_r2.push( full_ref[t.0-1] );
-                }
-
-                let mut rev_q2 = rev_q1.reverse().0;
-                if t.1 <= query.len() as i32 {
-                    rev_q2.push( query[t.1-1] );
-                }
-                Some((path, Sequence(rev_r2) + fwd_r, Sequence(rev_q2) + fwd_q))
+                // FIXME
+                let padded = align( query, &full_ref, base_params ).unwrap();
+                Some((path, padded.0, padded.1))
             },
             None => None
         }
