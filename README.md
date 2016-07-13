@@ -67,7 +67,6 @@ Nodes are identified by a unique u32 integer.  Names from the "id" field in the 
 
 ## TODO
 * set Frag llocal/rlocal fields based on splats
-* combine _align__global_max and _align__local_max functions
 * HMM/Viterbi alignmed
 * modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32) (?? is this worth the effort?)
 

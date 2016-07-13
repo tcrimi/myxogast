@@ -151,6 +151,14 @@ impl SeqNode {
     }
 }
 
+
+enum GraphAlnMode {
+    Global,
+    LocalTest,
+    LocalFollow
+}
+
+
 impl SeqGraph {
     pub fn from_json( serialized : &str ) -> Result<SeqGraph, SeqErr> {
         let mut names : BTreeMap<u32, String> = BTreeMap::new();
@@ -177,47 +185,54 @@ impl SeqGraph {
         SeqGraph::_max_len( &self.root )
     }
 
+    fn _align(node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>, base_params: &AlnParams,
+              start: i32, path: &mut Vec<u32>, pos: usize, mode: GraphAlnMode )
+              -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
 
-    fn _align__global_max(node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>,
-                          base_params: &AlnParams, start: i32, path: &mut Vec<u32>, pos: usize )
-                          -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
         match node {
-            &SeqNode::Nil => Some((0, path.to_vec())),
+            &SeqNode::Nil => Some((0, path.clone())),
             &SeqNode::Frag { id: ref id, val: ref val, next: ref next, ..} => {
                 path.push( id.clone() );
-
                 let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
-                let score = Cell::unpack(&m[t]).unwrap().1;
-                let (next_score, next_path) = SeqGraph::_align__global_max( next, query, m, base_params,
-                                                                    start + val.len() as i32, path,
-                                                                    pos + 1 )
-                    .unwrap();
 
-                Some((score + next_score, next_path.to_vec()))
+                match mode {
+                    GraphAlnMode::Global => {
+                        let score = Cell::unpack(&m[t]).unwrap().1;
+                        let (next_score, next_path) = SeqGraph::_align( next, query, m, base_params,
+                                                                        start + val.len() as i32, path,
+                                                                        pos + 1, mode )
+                            .unwrap();
+                        Some((score + next_score, next_path.to_vec()))
+                    },
+                    GraphAlnMode::LocalFollow => SeqGraph::_align( next, query, m, base_params, start + val.len() as i32,
+                                                                   path, pos+1, GraphAlnMode::LocalFollow ),
+                    GraphAlnMode::LocalTest => Some((Cell::unpack(&m[t]).unwrap().1, path.to_vec()))
+                }
             },
             &SeqNode::Branch { members: ref members, ..} => {
                 path.push( node.iden().unwrap() );
 
                 let mut best_node = &SeqNode::Nil;
                 let mut best_score = i32::min_value();
-                let mut best_path = Vec::new();
 
                 for n in members {
                     path.truncate( pos + 1 );
-                    let (next_score, _) = SeqGraph::_align__global_max( n, query, m, base_params,
-                                                                        start, path, pos + 1 )
+                    let (next_score, _) = SeqGraph::_align( n, query, m, base_params, start, path, pos + 1,
+                                                            match mode { GraphAlnMode::Global => GraphAlnMode::Global,
+                                                                         _ => GraphAlnMode::LocalTest } )
                         .unwrap();
-
                     if next_score > best_score {
                         best_score = next_score;
                         best_node = &n;
-                        best_path = path.to_vec();
                     }
                 }
-                Some((best_score, best_path.to_vec()))
+                path.truncate( pos + 1 );
+                SeqGraph::_align( best_node, query, m, base_params, start, path, pos+1, mode )
             }
         }
     }
+
+
     /// SeqGraph::align__global_max -- align query to graph, testing every possible branch to
     ///   find the global maximum.
     pub fn align__global_max(&self, query: &Sequence, base_params: &AlnParams )
@@ -225,8 +240,8 @@ impl SeqGraph {
         let mut _path = Vec::new();
         let ref_len = self.max_len();
         let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
-        match SeqGraph::_align__global_max( &self.root, query,  &mut m, base_params, 0,
-                                             &mut _path, 0) {
+        match SeqGraph::_align( &self.root, query,  &mut m, base_params, 0,
+                                 &mut _path, 0, GraphAlnMode::Global ) {
             Some((score, path)) => {
                 let mut full_ref_v = Vec::new();
                 for s in GraphPath::from_graph( self, path.to_vec() ) {
@@ -244,45 +259,6 @@ impl SeqGraph {
         }
     }
 
-    fn _align__local_max(node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>,
-                         base_params: &AlnParams, start: i32, path: &mut Vec<u32>,
-                         pos: usize, shallow: bool )
-                         -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
-
-        match node {
-            &SeqNode::Nil => Some((0, path.clone())),
-            &SeqNode::Frag { id: ref id, val: ref val, next: ref next, ..} => {
-                path.push( id.clone() );
-                let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
-
-                if shallow {
-                    Some((Cell::unpack(&m[t]).unwrap().1, path.to_vec()))
-                } else {
-                    SeqGraph::_align__local_max( next, query, m, base_params, start + val.len() as i32,
-                                                 path, pos+1, false )
-                }
-            },
-            &SeqNode::Branch { members: ref members, ..} => {
-                path.push( node.iden().unwrap() );
-
-                let mut best_node = &SeqNode::Nil;
-                let mut best_score = i32::min_value();
-
-                for n in members {
-                    path.truncate( pos + 1 );
-                    let (next_score, _) = SeqGraph::_align__local_max( n, query, m, base_params,
-                                                                       start, path, pos + 1, true )
-                        .unwrap();
-                    if next_score > best_score {
-                        best_score = next_score;
-                        best_node = &n;
-                    }
-                }
-                path.truncate( pos + 1 );
-                SeqGraph::_align__local_max( best_node, query, m, base_params, start, path, pos+1, false )
-            }
-        }
-    }
 
     /// SeqGraph::align__local_max -- align query to graph, testing each branch to a depth of 1
     ///   to quickly find a maximum
@@ -292,8 +268,8 @@ impl SeqGraph {
         let mut _path = Vec::new();
         let ref_len = self.max_len();
         let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
-        match SeqGraph::_align__local_max( &self.root, query,  &mut m, base_params, 0,
-                                             &mut _path, 0, false) {
+        match SeqGraph::_align( &self.root, query,  &mut m, base_params, 0,
+                                 &mut _path, 0, GraphAlnMode::LocalFollow ) {
             Some((score, path)) => {
                 let mut full_ref_v = Vec::new();
                 for s in GraphPath::from_graph( self, path.to_vec() ) {

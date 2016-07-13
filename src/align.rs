@@ -259,12 +259,9 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams )
 
     match align_matrix( reference, query, &params, None, &mut m ) {
         Some( (st_i, st_j) ) => {
-            println!("{:?}", m);
 
             let (fwd_r, fwd_q) = aln_from_coord( &st_i, &st_j, &1, &reference, &query, &m );
             let (rev_r1, rev_q1) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
-
-            println!("padding: fwd_r={:?}, fwd_q={:?}, rev_r1={:?}, rev_q1={:?}", fwd_r, fwd_q, rev_r1, rev_q1);
 
             let mut rev_r2 = rev_r1.reverse().0;
             if st_i <= reference.len() as i32 {
