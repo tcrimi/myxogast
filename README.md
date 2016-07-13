@@ -29,18 +29,32 @@ For example, this is a valid graph-JSON reference:
 Broadly, there are 3 node types: sequence fragments, branches, and probability distributions.  The simplest valid graph-JSON reference sequence is a simple JSON string, eg `"AGCTTTTCATTCTGACTGCAACGGGCAATATGTCTCTGTG"`, and represents a "fragment" node without an id.  Functionally, this is equivalent to `{"id": "BA000007.2", "seq": "AGCTTTTCATTCTGACTGCAACGGGCAATATGTCTCTGTG"}`.
 
 ## Status
-Currently, basic Needleman-Wunsch alignment works, and the JSON parser can handle fragment and branch nodes.
+Currently, basic Needleman-Wunsch alignment works, basic graphs are parsed correctly, and some basic form of graph alignment seems to work.
 
 
 ## Internals
 Reference sequence graphs are represented like so:
 ```Rust
 enum SeqNode {
-    Frag { id: u32, val: Sequence },
-    Splat,
-    Dist { id: u32, scores: ProbMatr },
-    List { id: u32, members: Vec<SeqNode> },
-    Branch { id: u32, members: Vec<SeqNode> }
+    Nil,
+
+    Frag {
+        id: u32,
+        val: Sequence,
+        llocal: bool,
+        rlocal: bool,
+
+        next: Rc<SeqNode>
+    },
+
+    //Dist { id: u32, scores: ProbMatr },
+
+    Branch {
+        id: u32,
+        llocal: bool,
+        rlocal: bool,
+        members: Vec<SeqNode>
+    }
 }
 
 struct SeqGraph {
@@ -52,7 +66,8 @@ Nodes are identified by a unique u32 integer.  Names from the "id" field in the 
 
 
 ## TODO
-* move Splat out of SeqNode, and make it an attribute of the other types
+* set Frag llocal/rlocal fields based on splats
+* combine _align__global_max and _align__local_max functions
 * HMM/Viterbi alignmed
 * modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32) (?? is this worth the effort?)
 
