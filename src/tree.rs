@@ -182,17 +182,18 @@ impl SeqGraph {
                           base_params: &AlnParams, start: i32, path: &mut Vec<u32>, pos: usize )
                           -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
         match node {
-            &SeqNode::Nil => Some((0, path.clone())),
+            &SeqNode::Nil => Some((0, path.to_vec())),
             &SeqNode::Frag { id: ref id, val: ref val, next: ref next, ..} => {
                 path.push( id.clone() );
 
                 let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
                 let score = Cell::unpack(&m[t]).unwrap().1;
-                let (next_score, _) = SeqGraph::_align__global_max( next, query, m, base_params,
+                let (next_score, next_path) = SeqGraph::_align__global_max( next, query, m, base_params,
                                                                     start + val.len() as i32, path,
                                                                     pos + 1 )
                     .unwrap();
-                Some((score + next_score, path.to_vec()))
+
+                Some((score + next_score, next_path.to_vec()))
             },
             &SeqNode::Branch { members: ref members, ..} => {
                 path.push( node.iden().unwrap() );
@@ -206,13 +207,13 @@ impl SeqGraph {
                     let (next_score, _) = SeqGraph::_align__global_max( n, query, m, base_params,
                                                                         start, path, pos + 1 )
                         .unwrap();
+
                     if next_score > best_score {
                         best_score = next_score;
                         best_node = &n;
                         best_path = path.to_vec();
                     }
                 }
-                best_path.push( best_node.iden().unwrap() );
                 Some((best_score, best_path.to_vec()))
             }
         }
@@ -227,14 +228,82 @@ impl SeqGraph {
         match SeqGraph::_align__global_max( &self.root, query,  &mut m, base_params, 0,
                                              &mut _path, 0) {
             Some((score, path)) => {
-                println!("align__global_max -> {:?}", (score,&path) );
                 let mut full_ref_v = Vec::new();
                 for s in GraphPath::from_graph( self, path.to_vec() ) {
                     full_ref_v.extend( s.0 );
                 }
                 let full_ref = Sequence(full_ref_v);
 
-                // FIXME
+                // FIXME - we can't use the existing alignment matrix, because we don't
+                //   know what path was tested last, and it's unlikely to be the maximum.
+                //   however, we can probably do better than this
+                let padded = align( query, &full_ref, base_params ).unwrap();
+                Some((path, padded.0, padded.1))
+            },
+            None => None
+        }
+    }
+
+    fn _align__local_max(node: &SeqNode, query: &Sequence, m: &mut Matrix<Cell>,
+                         base_params: &AlnParams, start: i32, path: &mut Vec<u32>,
+                         pos: usize, shallow: bool )
+                         -> Option<(/*score*/ i32, /*path*/ Vec<u32>)> {
+
+        match node {
+            &SeqNode::Nil => Some((0, path.clone())),
+            &SeqNode::Frag { id: ref id, val: ref val, next: ref next, ..} => {
+                path.push( id.clone() );
+                let t = align_matrix( val, query, &base_params, Some(start), m ).unwrap();
+
+                if shallow {
+                    Some((Cell::unpack(&m[t]).unwrap().1, path.to_vec()))
+                } else {
+                    SeqGraph::_align__local_max( next, query, m, base_params, start + val.len() as i32,
+                                                 path, pos+1, false )
+                }
+            },
+            &SeqNode::Branch { members: ref members, ..} => {
+                path.push( node.iden().unwrap() );
+
+                let mut best_node = &SeqNode::Nil;
+                let mut best_score = i32::min_value();
+
+                for n in members {
+                    path.truncate( pos + 1 );
+                    let (next_score, _) = SeqGraph::_align__local_max( n, query, m, base_params,
+                                                                       start, path, pos + 1, true )
+                        .unwrap();
+                    if next_score > best_score {
+                        best_score = next_score;
+                        best_node = &n;
+                    }
+                }
+                path.truncate( pos + 1 );
+                SeqGraph::_align__local_max( best_node, query, m, base_params, start, path, pos+1, false )
+            }
+        }
+    }
+
+    /// SeqGraph::align__local_max -- align query to graph, testing each branch to a depth of 1
+    ///   to quickly find a maximum
+    pub fn align__local_max(&self, query: &Sequence, base_params: &AlnParams )
+                            -> Option<(/*path*/ Vec<u32>, /*padded_ref*/ Sequence, /*padded_query*/ Sequence)> {
+
+        let mut _path = Vec::new();
+        let ref_len = self.max_len();
+        let mut m = Matrix::<Cell>::new( Cell(0), ref_len + 2, query.len() + 2 );
+        match SeqGraph::_align__local_max( &self.root, query,  &mut m, base_params, 0,
+                                             &mut _path, 0, false) {
+            Some((score, path)) => {
+                let mut full_ref_v = Vec::new();
+                for s in GraphPath::from_graph( self, path.to_vec() ) {
+                    full_ref_v.extend( s.0 );
+                }
+                let full_ref = Sequence(full_ref_v);
+
+                // FIXME - we can't use the existing alignment matrix, because we don't
+                //   know what path was tested last, and it's unlikely to be the maximum.
+                //   however, we can probably do better than this
                 let padded = align( query, &full_ref, base_params ).unwrap();
                 Some((path, padded.0, padded.1))
             },
@@ -258,7 +327,6 @@ impl<'a> GraphPath<'a> {
 
             match self.curr_node {
                 &SeqNode::Frag { val: ref val, next: ref next, ..} => {
-                    println!("found frag: {:?}", val);
                     self.pos += 1;
                     self.curr_node = next;
                     Some(val.clone())

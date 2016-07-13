@@ -57,10 +57,8 @@ impl Add for Sequence {
     type Output = Sequence;
 
     fn add(self, rhs: Sequence) -> Sequence {
-        println!("{} + {}", self, rhs);
         let mut a = self.0.clone();
         a.extend( rhs.0.iter().cloned() );
-        println!("{} + {} == {}?", self.len(), rhs.len(), a.len());
         Sequence( a )
     }
 }

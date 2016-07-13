@@ -92,7 +92,7 @@ impl AlnParams {
             llocal:     match _llocal { Some(b) => b, None => true },
             rlocal:     match _rlocal { Some(b) => b, None => true },
             max_indel:  _max_indel,
-            gap_open:   match _gap_open { Some(g) => g, None => -1 },
+            gap_open:   match _gap_open { Some(g) => g, None => -2 },
             gap_ext:    match _gap_ext { Some(g) => g, None => -1 },
             mismatch:   _mismatch,
             equal:      match _equal { Some(g) => g, None => 1 }, // "match" is a keyword
@@ -141,11 +141,10 @@ impl Eq for AlnState {}
 /// returns Option(m, i, j), where m is the alignment matrix, and i,j is the
 ///   the location of the cell with the highest value
 ///
-pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams, _ref_start: Option<i32>,
+pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams, _ref_offset: Option<i32>,
                  m: &mut Matrix<Cell> ) -> Option<(/*x*/ i32, /*y*/i32)> {
-
     let ref_len : i32 = reference.len() as i32;
-    let ref_start = match _ref_start { Some(x) => x, None => 1i32 };
+    let ref_offset = match _ref_offset { Some(x) => x, None => 0i32 };
     let query_len : i32 = query.len() as i32;
 
     let mut best_val : AlnScore = AlnScore::min_value();
@@ -157,20 +156,22 @@ pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams,
     }
     for j in 0i16 .. (query_len + 1) as i16 { m[ (0, j as i32) ] = Cell::pack( &AlnState::Nil, &(-j as AlnScore)); }
 
-    for i in ref_start .. ref_len + 1 {
+    for i in 1 .. ref_len + 1 {
         for j in 1 .. query_len + 1 {
 
-            let (dstate, del) = Cell::unpack( &m[ (i-1, j) ] ).unwrap();
+            let m_i = ref_offset + i;
+
+            let (dstate, del) = Cell::unpack( &m[ (m_i-1, j) ] ).unwrap();
             let del_score = del + match (params.rlocal && i == ref_len, dstate) {
                 (true, _) => 0,
                 (_, AlnState::Del) => params.gap_ext,
                 _ => params.gap_open
             };
 
-            let (istate, ins) = Cell::unpack( &m[ (i, j-1) ] ).unwrap();
+            let (istate, ins) = Cell::unpack( &m[ (m_i, j-1) ] ).unwrap();
             let ins_score = ins + if istate == AlnState::Ins { params.gap_ext } else { params.gap_open };
 
-            let (_, diag) = Cell::unpack( &m[ (i-1, j-1) ] ).unwrap();
+            let (_, diag) = Cell::unpack( &m[ (m_i-1, j-1) ] ).unwrap();
             let diag_score = diag + if reference[i-1] == query[j-1] { params.equal } else { params.mismatch };
 
             let (a,b) = {
@@ -184,10 +185,9 @@ pub fn align_matrix( reference: &Sequence, query: &Sequence, params: &AlnParams,
 
             if b > best_val {
                 best_val = b;
-                best_loc = (i, j);
+                best_loc = (m_i, j);
             }
-
-            m[ (i, j) ] = Cell::pack( &a, &b );
+            m[ (m_i, j) ] = Cell::pack( &a, &b );
         }
     };
     Some((best_loc.0, best_loc.1))
@@ -258,9 +258,14 @@ pub fn align( reference: &Sequence, query: &Sequence, params: &AlnParams )
     let mut m = Matrix::<Cell>::new( Cell(0), reference.len() + 2, query.len() + 2 );
 
     match align_matrix( reference, query, &params, None, &mut m ) {
-        Some( (st_i, st_j) ) => { 
+        Some( (st_i, st_j) ) => {
+            println!("{:?}", m);
+
             let (fwd_r, fwd_q) = aln_from_coord( &st_i, &st_j, &1, &reference, &query, &m );
             let (rev_r1, rev_q1) = aln_from_coord( &st_i, &st_j, &(-1), &reference, &query, &m );
+
+            println!("padding: fwd_r={:?}, fwd_q={:?}, rev_r1={:?}, rev_q1={:?}", fwd_r, fwd_q, rev_r1, rev_q1);
+
             let mut rev_r2 = rev_r1.reverse().0;
             if st_i <= reference.len() as i32 {
                 rev_r2.push( reference[st_i-1] );

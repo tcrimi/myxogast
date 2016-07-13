@@ -60,14 +60,21 @@ fn main() {
     assert_eq!( r2, ref2 );
     assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
 
-    //let graph = SeqGraph::from_json(r#"[{"id": "A", "seq": "ATGC"}, {"branch": ["ATTT","GCCC"]}, "ATTT"]"#).unwrap();
     let graph = SeqGraph::from_json(r#"["ATGC",{"branch": ["GGCC","TTAAAAAAAAT"]}]"#).unwrap();
     println!("{:?}", graph);
     println!("aln?? {:?}", graph.align__global_max( &Sequence::from_str("AGGCTTAAAA").unwrap(), &params ));
 
-    //graph.align( &query2, &vec![0,1,2,4], &params );
-    //graph.local_max( &Sequence::from_str("ATGCGCCCATTT").unwrap(), &params );
-    
+
+   
+    println!("**************");
+    //println!("{:?}", align( &Sequence::from_str("ATGC").unwrap(), &Sequence::from_str("ATCG").unwrap(), &params));
+
+    let loc_g = SeqGraph::from_json(r#"[{"branch": [["ATCG",{"branch":["TTGG","AAAA"]}],  ["ATGC","TTTT"]]}]"#).unwrap();
+    println!("loc_g: {:?}", loc_g);
+    let loc_q = Sequence::from_str("ATGCAAAA").unwrap();
+    println!("global: {:?}", loc_g.align__global_max( &loc_q, &params ));
+    println!("local: {:?}", loc_g.align__local_max( &loc_q, &params ));
+
     /*
     let params_loc = AlnParams {
         llocal:    true,
