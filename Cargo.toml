@@ -8,6 +8,7 @@ rustc-serialize = "*"
 serde = "*"
 serde_codegen = "*"
 serde_json = "*"
+argparse = "*"
 
 [dependencies.bio]
 git = "http://github.com/rust-bio/rust-bio.git"
