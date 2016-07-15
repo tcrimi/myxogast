@@ -9,7 +9,7 @@ use align::*;
 use matrix::*;
 use std::iter::Iterator;
 use std::rc::Rc;
-
+use std::cmp::max;
 
 #[derive(Debug, Clone)]
 pub enum SeqNode {
@@ -202,7 +202,7 @@ impl SeqGraph {
                                                                         start + val.len() as i32, path,
                                                                         pos + 1, mode )
                             .unwrap();
-                        Some((score + next_score, next_path.to_vec()))
+                        Some((max(score, next_score), next_path.to_vec()))
                     },
                     GraphAlnMode::LocalFollow => SeqGraph::_align( next, query, m, base_params, start + val.len() as i32,
                                                                    path, pos+1, GraphAlnMode::LocalFollow ),
