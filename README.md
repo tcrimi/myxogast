@@ -67,6 +67,8 @@ Nodes are identified by a unique u32 integer.  Names from the "id" field in the 
 
 ## TODO
 * set Frag llocal/rlocal fields based on splats
+* add __PARAMS__ block to JSON format
+* enforce short-circuiting of alignment (eg, max 3 indels)
 * HMM/Viterbi alignmed
 * modify Sequence to bit-pack bases (ATGCN- -> 3 bits, or 10 bases per u32) (?? is this worth the effort?)
 
