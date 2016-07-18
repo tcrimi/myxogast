@@ -252,7 +252,7 @@ impl SeqGraph {
                 // FIXME - we can't use the existing alignment matrix, because we don't
                 //   know what path was tested last, and it's unlikely to be the maximum.
                 //   however, we can probably do better than this
-                let padded = align( query, &full_ref, base_params ).unwrap();
+                let padded = align( &full_ref, query, base_params ).unwrap();
                 Some((path, padded.0, padded.1))
             },
             None => None
@@ -280,7 +280,7 @@ impl SeqGraph {
                 // FIXME - we can't use the existing alignment matrix, because we don't
                 //   know what path was tested last, and it's unlikely to be the maximum.
                 //   however, we can probably do better than this
-                let padded = align( query, &full_ref, base_params ).unwrap();
+                let padded = align( &full_ref, query, base_params ).unwrap();
                 Some((path, padded.0, padded.1))
             },
             None => None
