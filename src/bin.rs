@@ -14,8 +14,8 @@ use std::fmt;
 use std::str;
 use std::fmt::Debug;
 use std::cmp::{PartialOrd,Ordering,max};
-
-use bio::io::fasta;
+use std::io::Read;
+use bio::io::{fasta,fastq};
 
 use myxogast::align::*;
 use myxogast::tree::*;
@@ -23,6 +23,18 @@ use myxogast::seq::*;
 use myxogast::matrix::*;
  
 use argparse::{ArgumentParser, StoreTrue, Store};
+
+// FIXME:
+const params : AlnParams = AlnParams {
+    llocal:    true,
+    rlocal:    true,
+    max_indel: None,
+    gap_open:  -1,
+    gap_ext:   -1,
+    mismatch:  -1,
+    equal:     1 };
+
+
 
 
 fn main() {
@@ -38,18 +50,40 @@ fn main() {
             .required();
         parser.parse_args_or_exit();
     }
-    println!("fname: {}", ref_fname);
-    println!("fname: {}", query_fname);
 
-    //let graph = None;
+    let mut graph_s = String::new();
+    File::open(ref_fname).unwrap().read_to_string(&mut graph_s);
+    let graph = SeqGraph::from_json( &graph_s ).unwrap();
+    println!("graph: {:?}", graph);
 
-    let reader = fasta::Reader::from_file(query_fname).unwrap();
-    for gene in reader.records() {
-        let seq = gene.unwrap();
- 
-        // FIXME: ugh ..
-        let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
- 
-        let query = Sequence::from_str(seq_str.as_str()).unwrap();
-    }
+    // FIXME: it seems like Rust-Bio implements nearly IDENTICAL structures
+    //   for records from FASTA and FASTQ files, but they're not the same types!
+    let query_lc = query_fname.to_lowercase();
+    let reader = if query_lc.ends_with(".fasta") || query_lc.ends_with(".fa") {
+        for gene in fasta::Reader::from_file(query_fname).unwrap().records() {
+            let seq = gene.unwrap();
+            let gene_name = seq.id().unwrap();
+
+            // FIXME: ugh ..
+            let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
+            println!("name:{}", gene_name);
+            let query = Sequence::from_str(seq_str.as_str()).unwrap();
+            let (_, tgt, refe) = graph.align__global_max( &query, &params ).unwrap();
+            println!("name:{} - {}, {}", gene_name, tgt, refe );
+        }
+
+    } else if query_lc.ends_with(".fastq") || query_lc.ends_with(".fq") {
+        for gene in fastq::Reader::from_file(query_fname).unwrap().records() {
+            let seq = gene.unwrap();
+
+            // FIXME: ugh ..
+            let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
+
+            let query = Sequence::from_str(seq_str.as_str()).unwrap();
+        }
+
+    } else {
+        panic!("don't recognize file type: {}", query_fname);
+    };
+
 }
