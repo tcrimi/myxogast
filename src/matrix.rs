@@ -3,14 +3,15 @@ use std::fmt::Debug;
 use std::ops::{Index,IndexMut};
 
 
-#[derive(RustcDecodable,RustcEncodable)]
+#[derive(Clone,RustcDecodable,RustcEncodable)]
 pub struct Matrix<T> {
     pub width:   usize,
     pub height:  usize,
     pub data :   Vec<T>,
 }
 
-impl<T:Clone> Matrix<T> {
+
+impl<T:Clone + Ord> Matrix<T> {
     pub fn new( init: T, w: usize, h: usize ) -> Matrix<T> {
         Matrix {
             width:  w,
@@ -25,6 +26,12 @@ impl<T:Clone> Matrix<T> {
             }
         }
     }
+
+    pub fn max(&self) -> (/*val*/ T, (/*x*/ i32, /*y*/ i32)) {
+        let idx = self.data.iter().enumerate().max_by_key(|&(_, item)| item).unwrap().0;
+        (self.data[idx].clone(), ((idx % self.width) as i32, (idx / self.height) as i32))
+    }
+
     /*
     pub fn map<T,F>(&'a self, f: F) -> Matrix<B>
     where F: &T -> B {

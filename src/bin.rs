@@ -2,99 +2,88 @@ extern crate rustc_serialize;
 extern crate myxogast;
 extern crate bio;
 
+extern crate argparse;
+
 use std::io;
 use std::fs::File;
 use rustc_serialize::json;
+use rustc_serialize::json::Json;
 use std::ops::{Index,IndexMut};
 use std::clone::Clone;
 use std::fmt;
 use std::str;
 use std::fmt::Debug;
 use std::cmp::{PartialOrd,Ordering,max};
-
-use bio::io::fasta;
+use std::io::Read;
+use bio::io::{fasta,fastq};
 
 use myxogast::align::*;
 use myxogast::tree::*;
 use myxogast::seq::*;
 use myxogast::matrix::*;
+ 
+use argparse::{ArgumentParser, StoreTrue, Store};
+
+// FIXME:
+const params : AlnParams = AlnParams {
+    llocal:    true,
+    rlocal:    true,
+    max_indel: None,
+    gap_open:  -1,
+    gap_ext:   -1,
+    mismatch:  -1,
+    equal:     1 };
+
 
 
 
 fn main() {
-    let x = SeqNode::Frag { id: 0, val: Sequence( vec![0,1,2,3] ) };
-    println!("Hello World: {:?}", x );
-    println!("{:?}", json::encode(&x));
-    let mut y = Matrix::<u32>::new(0, 10, 10);
-    y[(1,0)] = 5u32;
-    println!("5 == {}?", y[(1,0)]);
-
-    let q = Sequence::from_str("atgc");
-    println!("{:?}", q);
-    let r = Sequence::from_str("atgcn");
-    println!("{:?}", r);
-
-    assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Ins, &-10 ) ).unwrap(), (AlnState::Ins, -10) );
-    assert_eq!( Cell::unpack( &Cell::pack( &AlnState::Match, &222 ) ).unwrap(), (AlnState::Match, 222) );
-
-    let params = AlnParams {
-        llocal:    false,
-        rlocal:    false,
-        max_indel: None,
-        gap_open:  -1,
-        gap_ext:   -1,
-        mismatch:  -1,
-        equal:     1 };
-
-    let s = "ATGCATGC";
-    assert_eq!( format!("{}", Sequence::from_str(s).unwrap()), s);
-
-    let reference = Sequence::from_str("AAAAATGCTCGAAAAAAAA").unwrap();
-    let query = Sequence::from_str("TGCTCG").unwrap();
-
-    let (r, q) = align( &reference, &query, &params ).unwrap();
-    assert_eq!( r, reference );
-    assert_eq!( q, Sequence::from_str("-----TGCTCG--------").unwrap() );
-
-    let ref2 = Sequence::from_str("ATGCAT").unwrap();
-    let query2 = Sequence::from_str("ATGCA").unwrap();
-    let (r2, q2) = align( &ref2, &query2, &params ).unwrap();
-    assert_eq!( r2, ref2 );
-    assert_eq!( q2, Sequence::from_str("ATGCA-").unwrap());
-
-
-    let params_loc = AlnParams {
-        llocal:    true,
-        rlocal:    true,
-        max_indel: None,
-        gap_open:  -1,
-        gap_ext:   -1,
-        mismatch:  -1,
-        equal:     1 };
-
-    // rust-bio
-    let reader = fasta::Reader::from_file("e_coli.fasta").unwrap();
-    for gene in reader.records() {
-        let seq = gene.unwrap();
-
-        // FIXME: ugh ..
-        let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
-
-        let e_coli = Sequence::from_str(seq_str.as_str()).unwrap();
-
-        let sub_ec = Sequence::from_str("CGAAGTGTTTGTGATTGGCGTCGGTGGCGTTGGCGGTGCGCTGCTGGAGCAACTGAA").unwrap();
-
-        let (ec_r, ec_q) = align( &e_coli, &sub_ec, &params_loc ).unwrap();
-        println!("R: {}", ec_r);
-        println!("Q: {}", ec_q);
-
-        //let s2 = seq.to_vec();
-        //println!("{}", Sequence(s2));
+    let mut ref_fname : String = String::new();
+    let mut query_fname : String = String::new();
+    { // scope block?
+        let mut parser = ArgumentParser::new();
+        parser.refer(&mut ref_fname)
+            .add_argument("ref", Store, "refernce JSON file")
+            .required();
+        parser.refer(&mut query_fname)
+            .add_argument("query", Store, "query file")
+            .required();
+        parser.parse_args_or_exit();
     }
 
-    /*
-    let x_scores = Matrix { width: x.width, height: x.height,
-                            data: x.data.iter().map( |c| Cell::unpack(c.clone()).unwrap().1 ).collect() };
-    println!("\n{:?}", x_scores );
-     */
+    let mut graph_s = String::new();
+    File::open(ref_fname).unwrap().read_to_string(&mut graph_s);
+    let graph = SeqGraph::from_json( &graph_s ).unwrap();
+    println!("graph: {:?}", graph);
+
+    // FIXME: it seems like Rust-Bio implements nearly IDENTICAL structures
+    //   for records from FASTA and FASTQ files, but they're not the same types!
+    let query_lc = query_fname.to_lowercase();
+    let reader = if query_lc.ends_with(".fasta") || query_lc.ends_with(".fa") {
+        for gene in fasta::Reader::from_file(query_fname).unwrap().records() {
+            let seq = gene.unwrap();
+            let gene_name = seq.id().unwrap();
+
+            // FIXME: ugh ..
+            let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
+            println!("name:{}", gene_name);
+            let query = Sequence::from_str(seq_str.as_str()).unwrap();
+            let (_, tgt, refe) = graph.align__global_max( &query, &params ).unwrap();
+            println!("name:{} - {}, {}", gene_name, tgt, refe );
+        }
+
+    } else if query_lc.ends_with(".fastq") || query_lc.ends_with(".fq") {
+        for gene in fastq::Reader::from_file(query_fname).unwrap().records() {
+            let seq = gene.unwrap();
+
+            // FIXME: ugh ..
+            let seq_str : String = String::from_utf8_lossy( &seq.seq() ).into_owned();
+
+            let query = Sequence::from_str(seq_str.as_str()).unwrap();
+        }
+
+    } else {
+        panic!("don't recognize file type: {}", query_fname);
+    };
+
 }
